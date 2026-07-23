@@ -1,0 +1,36 @@
+# Local containerized run of BioThings Pulse.
+#   docker compose -f deploy/docker-compose.yml up --build
+#
+# Uses the default SQLite store. Uncomment the dynamodb-local service and the
+# PULSE_STORE_BACKEND/PULSE_DYNAMODB_* env vars to exercise the DynamoDB path.
+services:
+  pulse:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    ports:
+      - "8080:8080"
+    environment:
+      PULSE_STORE_BACKEND: sqlite
+      PULSE_SYNC_ON_STARTUP: "true"
+      PULSE_SCHEDULER_ENABLED: "true"
+      PULSE_SCHEDULER_INTERVAL: "3600"
+      # Limit to one repo for a fast first boot; remove to use the full default registry.
+      # PULSE_REGISTRY_FILE: /app/deploy/registry.local.yaml
+      # --- DynamoDB path (with the service below) ---
+      # PULSE_STORE_BACKEND: dynamodb
+      # PULSE_DYNAMODB_TABLE: biothings-pulse-state
+      # PULSE_DYNAMODB_ENDPOINT_URL: http://dynamodb:8000
+      # AWS_ACCESS_KEY_ID: local
+      # AWS_SECRET_ACCESS_KEY: local
+    volumes:
+      - pulse-data:/data
+
+  # dynamodb:
+  #   image: amazon/dynamodb-local:latest
+  #   command: "-jar DynamoDBLocal.jar -inMemory -sharedDb"
+  #   ports:
+  #     - "8000:8000"
+
+volumes:
+  pulse-data:

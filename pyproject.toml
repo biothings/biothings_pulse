@@ -1,0 +1,78 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "biothings-pulse"
+version = "0.1.0"
+description = "Standalone API server that runs only the data-source-check step of BioThings data plugins."
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "Apache-2.0" }
+authors = [{ name = "The BioThings Team", email = "cwu@scripps.edu" }]
+keywords = ["biothings", "data plugin", "dumper", "version check", "api"]
+
+dependencies = [
+    "fastapi>=0.110",
+    "uvicorn[standard]>=0.27",
+    "pydantic>=2.5",
+    "pydantic-settings>=2.1",
+    "httpx>=0.26",
+    "GitPython>=3.1",
+    "APScheduler>=3.10",
+    "PyYAML>=6.0",
+    # BioThings SDK provides the dumper base classes used by the check engine.
+    # The [hub] extra pulls the dataload/dumper machinery.
+    #
+    # TEMPORARY: pinned to a specific commit of the asyncio-modernization
+    # branch, which replaces orjson with msgspec (orjson re-enables the GIL and
+    # blocks free-threaded Python 3.14t; msgspec is free-threaded-safe). Pinned
+    # to a commit (not the branch) for reproducible installs. Switch back to a
+    # released "biothings[hub]>=1.1.x" once these changes ship to PyPI.
+    "biothings[hub] @ git+https://github.com/biothings/biothings.api.git@de416648bcd485b7224a45a1fe01c4400f5f24ad",
+]
+
+[project.optional-dependencies]
+aws = [
+    "boto3>=1.34",
+]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+    "respx>=0.20",
+    "ruff>=0.3",
+    "boto3>=1.34",
+]
+
+[project.scripts]
+biothings-pulse = "biothings_pulse.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/biothings/biothings_pulse"
+Documentation = "https://docs.biothings.io"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+biothings_pulse = ["data/*.yaml", "data/*.yml"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+addopts = "-m 'not integration'"
+markers = [
+    "integration: tests that hit the network / require git clones (run with '-m integration')",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py39"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+# UP (pyupgrade) is intentionally excluded: we target py39 and keep
+# typing.Optional/List because pydantic evaluates annotations at runtime and
+# `X | None` requires py310+.
+select = ["E", "F", "I", "W", "B"]
+ignore = ["B008"]  # FastAPI Depends() in defaults is idiomatic

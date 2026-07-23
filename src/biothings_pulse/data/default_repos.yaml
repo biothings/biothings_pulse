@@ -1,0 +1,53 @@
+# Default registry of BioThings Hub repositories whose data plugins BioThings
+# Pulse monitors. Add entries here (or override via the PULSE_REGISTRY_FILE
+# setting) to support additional hubs or a plugins-only repo.
+#
+# Per-repo fields:
+#   name           unique short name, used as the {repo} path segment in the API
+#   git_url        clone URL (https)
+#   ref            branch/tag/commit to check out (null = the remote default branch)
+#   enabled        set false to keep an entry but skip it
+#   manifest_globs glob(s), relative to the repo root, matching manifest.json files
+#                  for manifest-based plugins
+#   advanced_globs glob(s), relative to the repo root, matching the *directory* of
+#                  each "advanced" plugin (a source package under hub/dataload/sources)
+#
+# Globs default (when omitted) to the conventional BioThings layout below.
+
+defaults:
+  manifest_globs:
+    - "plugins/*/manifest.json"
+  advanced_globs:
+    - "**/hub/dataload/sources/*"
+    # Some repos (e.g. pending.api) keep advanced plugins directly under plugins/
+    - "plugins/*"
+
+repos:
+  - name: mygene.info
+    git_url: https://github.com/biothings/mygene.info.git
+    ref: null
+  - name: myvariant.info
+    git_url: https://github.com/biothings/myvariant.info.git
+    ref: null
+  - name: mychem.info
+    git_url: https://github.com/biothings/mychem.info.git
+    ref: null
+  - name: mydisease.info
+    git_url: https://github.com/biothings/mydisease.info.git
+    ref: null
+  - name: biothings.species
+    git_url: https://github.com/biothings/biothings.species.git
+    ref: null
+  - name: mygeneset.info
+    git_url: https://github.com/biothings/mygeneset.info.git
+    ref: null
+  - name: pending.api
+    git_url: https://github.com/biothings/pending.api.git
+    ref: null
+    # Many pending.api plugins are git submodules under plugins/. Only init
+    # those (skip the large top-level hub mirrors: mygene/myvariant/mychem).
+    submodules:
+      - plugins
+  - name: NAR.API
+    git_url: https://github.com/biothings/NAR.API.git
+    ref: null

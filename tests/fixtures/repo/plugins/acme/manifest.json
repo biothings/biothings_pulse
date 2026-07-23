@@ -1,0 +1,19 @@
+{
+  "version": "0.2",
+  "__metadata__": {
+    "url": "http://example.com/acme",
+    "license": "CC BY 4.0"
+  },
+  "dumper": {
+    "data_url": [
+      "http://example.com/acme_a.tsv",
+      "http://example.com/acme_b.tsv"
+    ],
+    "release": "version:get_release",
+    "uncompress": false
+  },
+  "uploader": {
+    "parser": "parser:load_data",
+    "on_duplicates": "error"
+  }
+}

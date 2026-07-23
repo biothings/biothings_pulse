@@ -1,0 +1,7 @@
+{
+  "version": "0.2",
+  "dumper": {
+    "data_url": "http://example.com/basic.txt",
+    "uncompress": false
+  }
+}
