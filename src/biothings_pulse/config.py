@@ -97,8 +97,8 @@ class Settings(BaseSettings):
 
     # --- Scheduler -------------------------------------------------------
     scheduler_enabled: bool = True
-    scheduler_interval: float = 3600.0
-    """Seconds between background refresh sweeps of all sources."""
+    scheduler_interval: float = 86400.0
+    """Seconds between background refresh sweeps of all sources (default: daily)."""
 
     # --- State store -----------------------------------------------------
     store_backend: str = "sqlite"

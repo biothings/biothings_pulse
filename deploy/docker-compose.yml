@@ -14,7 +14,7 @@ services:
       PULSE_STORE_BACKEND: sqlite
       PULSE_SYNC_ON_STARTUP: "true"
       PULSE_SCHEDULER_ENABLED: "true"
-      PULSE_SCHEDULER_INTERVAL: "3600"
+      PULSE_SCHEDULER_INTERVAL: "86400"
       # Limit to one repo for a fast first boot; remove to use the full default registry.
       # PULSE_REGISTRY_FILE: /app/deploy/registry.local.yaml
       # --- DynamoDB path (with the service below) ---

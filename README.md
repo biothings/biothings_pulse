@@ -69,7 +69,8 @@ hammering upstream servers by caching results and refreshing on three triggers:
   ignoring the cache.
 - **On a schedule.** When `PULSE_SCHEDULER_ENABLED=true` (the default), an
   in-process scheduler sweeps **every source** every `PULSE_SCHEDULER_INTERVAL`
-  seconds (default **3600 s / hourly**). `POST /admin/refresh` runs that sweep
+  seconds (default **86400 s / daily**, which is enough for most data sources).
+  `POST /admin/refresh` runs that sweep
   on demand.
 - **On startup.** If `PULSE_SYNC_ON_STARTUP=true` (default), Pulse git-syncs the
   repos and rediscovers plugins in the background as it boots.
@@ -164,7 +165,7 @@ All settings are env vars prefixed `PULSE_` (see `src/biothings_pulse/config.py`
 | `PULSE_CHECK_TIMEOUT` | `60` | Per-check timeout (s) |
 | `PULSE_CHECK_TTL` | `3600` | Cached result freshness (s) |
 | `PULSE_SCHEDULER_ENABLED` | `true` | In-app periodic refresh |
-| `PULSE_SCHEDULER_INTERVAL` | `3600` | Refresh interval (s) |
+| `PULSE_SCHEDULER_INTERVAL` | `86400` | Refresh interval (s, default daily) |
 | `PULSE_SYNC_ON_STARTUP` | `true` | Sync + discover at boot |
 | `PULSE_MAX_CHECK_WORKERS` | `8` | Check threadpool size |
 

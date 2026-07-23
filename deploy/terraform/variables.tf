@@ -47,7 +47,7 @@ variable "scheduler_enabled" {
 
 variable "scheduler_interval" {
   type    = number
-  default = 3600
+  default = 86400
 }
 
 variable "vpc_id" {

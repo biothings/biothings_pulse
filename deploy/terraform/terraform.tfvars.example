@@ -12,7 +12,7 @@ desired_count  = 1
 
 # Keep the in-app scheduler on for a single task; turn off if you scale out.
 scheduler_enabled  = true
-scheduler_interval = 3600
+scheduler_interval = 86400
 
 # extra_environment = {
 #   PULSE_CHECK_TIMEOUT = "90"
