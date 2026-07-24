@@ -20,7 +20,10 @@ import sys
 
 from biothings_pulse.config import get_settings
 from biothings_pulse.plugins.discovery import discover_plugins
-from biothings_pulse.plugins.requirements import collect_requirements
+from biothings_pulse.plugins.requirements import (
+    collect_repo_requirements,
+    collect_requirements,
+)
 from biothings_pulse.plugins.sync import sync_registry
 
 
@@ -50,8 +53,10 @@ def main() -> int:
         if path:
             refs.extend(discover_plugins(spec.name, path, spec))
 
-    requirements = collect_requirements(refs)
-    print(f"# {len(requirements)} plugin requirement(s) discovered:")
+    requirements = sorted(
+        set(collect_requirements(refs)) | set(collect_repo_requirements(paths.values()))
+    )
+    print(f"# {len(requirements)} plugin/hub requirement(s) discovered:")
     for req in requirements:
         print(req)
 
