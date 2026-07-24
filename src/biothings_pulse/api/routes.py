@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import secrets
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
@@ -27,6 +28,37 @@ _DASHBOARD_FILE = Path(__file__).resolve().parent.parent / "static" / "dashboard
 
 def get_service(request: Request) -> PulseService:
     return request.app.state.service
+
+
+def _presented_token(request: Request) -> str | None:
+    auth = request.headers.get("Authorization", "")
+    if auth.lower().startswith("bearer "):
+        return auth[7:].strip()
+    return request.headers.get("X-Admin-Token")
+
+
+def _verify_admin(request: Request, svc: PulseService) -> None:
+    """Authorize a mutating/admin operation. Read-only by default."""
+    token = svc.settings.admin_token
+    if not token:
+        raise HTTPException(
+            status_code=403,
+            detail="Admin operations are disabled. Set PULSE_ADMIN_TOKEN to enable them.",
+        )
+    presented = _presented_token(request)
+    if not presented or not secrets.compare_digest(presented, token):
+        raise HTTPException(
+            status_code=401,
+            detail="Missing or invalid admin token.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+
+def require_admin(
+    request: Request, svc: PulseService = Depends(get_service)
+) -> None:
+    """FastAPI dependency guarding admin endpoints."""
+    _verify_admin(request, svc)
 
 
 def _status(svc: PulseService, state: SourceState) -> SourceStatus:
@@ -88,20 +120,29 @@ def catalog(svc: PulseService = Depends(get_service)) -> CatalogResponse:
 def get_source(
     repo: str,
     plugin: str,
+    request: Request,
     refresh: bool = Query(
-        False, description="Force a fresh live check instead of returning cached state."
+        False,
+        description="Force a fresh live check (admin-only) instead of cached state.",
     ),
     svc: PulseService = Depends(get_service),
 ) -> SourceStatus:
-    # Reads are cheap (cached); only ?refresh=true triggers a live check.
-    state = svc.check_source(repo, plugin) if refresh else svc.get_status(repo, plugin)
+    # Reads are cheap (cached); ?refresh=true forces a live check and is admin-only.
+    if refresh:
+        _verify_admin(request, svc)
+        state = svc.check_source(repo, plugin)
+    else:
+        state = svc.get_status(repo, plugin)
     if state is None:
         raise HTTPException(status_code=404, detail=f"Unknown source {repo}/{plugin}")
     return _status(svc, state)
 
 
 @router.post(
-    "/sources/{repo}/{plugin}/check", response_model=SourceStatus, tags=["sources"]
+    "/sources/{repo}/{plugin}/check",
+    response_model=SourceStatus,
+    tags=["sources"],
+    dependencies=[Depends(require_admin)],
 )
 def check_source(
     repo: str, plugin: str, svc: PulseService = Depends(get_service)
@@ -112,13 +153,23 @@ def check_source(
     return _status(svc, state)
 
 
-@router.post("/admin/sync", response_model=MessageResponse, tags=["admin"])
+@router.post(
+    "/admin/sync",
+    response_model=MessageResponse,
+    tags=["admin"],
+    dependencies=[Depends(require_admin)],
+)
 def admin_sync(svc: PulseService = Depends(get_service)) -> MessageResponse:
     count = svc.sync_and_discover()
     return MessageResponse(message="synced and rediscovered", count=count)
 
 
-@router.post("/admin/refresh", response_model=MessageResponse, tags=["admin"])
+@router.post(
+    "/admin/refresh",
+    response_model=MessageResponse,
+    tags=["admin"],
+    dependencies=[Depends(require_admin)],
+)
 def admin_refresh(svc: PulseService = Depends(get_service)) -> MessageResponse:
     count = svc.refresh_all()
     return MessageResponse(message="refreshed all sources", count=count)

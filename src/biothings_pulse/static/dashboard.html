@@ -97,6 +97,11 @@
   button:hover { color: var(--ink); border-color: var(--faint); }
   button.primary { color: var(--accent); border-color: rgba(77,208,177,.4); }
   button.primary:hover { background: rgba(77,208,177,.08); border-color: var(--accent); }
+  .admin-only { display: none; }              /* hidden until admin-unlocked */
+  body.admin .admin-only { display: inline-flex; }
+  #btn-admin { display: inline-flex; align-items: center; }
+  #btn-admin.active { color: var(--accent); border-color: rgba(77,208,177,.4); }
+  #btn-admin .ic { width: 12px; height: 12px; vertical-align: -2px; margin-right: 5px; }
   button:disabled { opacity: .5; cursor: default; }
 
   .table-wrap { border: 1px solid var(--line); border-radius: 3px; overflow-x: auto; background: var(--surface); }
@@ -172,8 +177,9 @@
     <input type="search" id="filter" placeholder="filter by repo or plugin…" autocomplete="off" spellcheck="false" />
     <label class="chk"><input type="checkbox" id="only-changed" /> recently changed</label>
     <button id="btn-refresh" title="Reload cached statuses">Refresh</button>
-    <button id="btn-recheck-all" class="primary" title="Force a fresh check of every source">Re-check all</button>
-    <button id="btn-sync" title="Re-pull repos and rediscover plugins">Sync repos</button>
+    <button id="btn-recheck-all" class="primary admin-only" title="Force a fresh check of every source">Re-check all</button>
+    <button id="btn-sync" class="admin-only" title="Re-pull repos and rediscover plugins">Sync repos</button>
+    <button id="btn-admin" title="Admin access"></button>
   </div>
 
   <div class="table-wrap">
@@ -233,10 +239,30 @@ function isRecent(iso) {
 // A real version transition (has a previous version) observed within the window.
 function isChanged(d) { return !!d.last_version && isRecent(d.current_version_at); }
 
-async function api(path, method='GET') {
-  const r = await fetch(path, { method });
-  if (!r.ok) throw new Error(path + ' → ' + r.status);
+async function api(path, method='GET', admin=false) {
+  const headers = {};
+  if (admin && adminToken()) headers['Authorization'] = 'Bearer ' + adminToken();
+  const r = await fetch(path, { method, headers });
+  if (!r.ok) {
+    if (admin && (r.status === 401 || r.status === 403)) setAdmin('');  // relock on auth failure
+    throw new Error(path + ' → ' + r.status);
+  }
   return r.json();
+}
+
+// --- Admin unlock (token in localStorage; sent as Bearer on admin ops) ---
+const ADMIN_KEY = 'pulse-admin-token';
+const LOCK_SVG = '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="10" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>';
+const UNLOCK_SVG = '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="10" rx="2"/><path d="M7 11V7a5 5 0 0 1 9.6-2"/></svg>';
+function adminToken() { try { return localStorage.getItem(ADMIN_KEY) || ''; } catch (_) { return ''; } }
+function setAdmin(t) { try { t ? localStorage.setItem(ADMIN_KEY, t) : localStorage.removeItem(ADMIN_KEY); } catch (_) {} renderAdmin(); }
+function renderAdmin() {
+  const on = !!adminToken();
+  document.body.classList.toggle('admin', on);
+  const b = $('#btn-admin');
+  b.classList.toggle('active', on);
+  b.innerHTML = (on ? UNLOCK_SVG : LOCK_SVG) + (on ? 'admin' : 'admin');
+  b.title = on ? 'Admin unlocked — click to lock' : 'Enter admin token to enable admin actions';
 }
 
 function renderStats() {
@@ -313,8 +339,13 @@ async function withBusy(btn, fn) {
 $('#filter').addEventListener('input', renderRows);
 $('#only-changed').addEventListener('change', renderRows);
 $('#btn-refresh').addEventListener('click', (e) => withBusy(e.currentTarget, load));
-$('#btn-recheck-all').addEventListener('click', (e) => withBusy(e.currentTarget, async () => { await api('/admin/refresh','POST'); await load(); }));
-$('#btn-sync').addEventListener('click', (e) => withBusy(e.currentTarget, async () => { await api('/admin/sync','POST'); await load(); }));
+$('#btn-recheck-all').addEventListener('click', (e) => withBusy(e.currentTarget, async () => { await api('/admin/refresh','POST',true); await load(); }));
+$('#btn-sync').addEventListener('click', (e) => withBusy(e.currentTarget, async () => { await api('/admin/sync','POST',true); await load(); }));
+$('#btn-admin').addEventListener('click', () => {
+  if (adminToken()) { setAdmin(''); }
+  else { const t = prompt('Admin token:'); if (t) setAdmin(t.trim()); }
+});
+renderAdmin();
 
 // --- Theme toggle: an icon button cycling auto (follow OS) -> light -> dark ---
 const THEME_KEY = 'pulse-theme';

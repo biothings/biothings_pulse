@@ -67,3 +67,10 @@ variable "extra_environment" {
   default     = {}
   description = "Additional PULSE_* environment variables for the container."
 }
+
+variable "admin_token" {
+  type        = string
+  default     = ""
+  sensitive   = true
+  description = "Secret for admin/mutating operations (PULSE_ADMIN_TOKEN). Empty = admin disabled (read-only). For production prefer sourcing this from SSM/Secrets Manager rather than a plaintext tfvar."
+}

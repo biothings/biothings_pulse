@@ -133,21 +133,38 @@ biothings-pulse serve --reload             # run the API server
 
 ## API
 
-| Method & path | Purpose |
-|---|---|
-| `GET /` | **Dashboard** — live pulse of all sources (links to `/docs`) |
-| `GET /docs` | Interactive API documentation (OpenAPI/Swagger UI) |
-| `GET /health` | Liveness + catalog size |
-| `GET /catalog` | Discovered sources (no state) |
-| `GET /sources` | All sources with last-known status |
-| `GET /sources/{repo}/{plugin}` | Cached status (cheap); `?refresh=true` forces a live check |
-| `POST /sources/{repo}/{plugin}/check` | Force a fresh check |
-| `POST /admin/sync` | Re-pull repos & rediscover |
-| `POST /admin/refresh` | Check every source now |
+| Method & path | Auth | Purpose |
+|---|---|---|
+| `GET /` | public | **Dashboard** — live pulse of all sources (links to `/docs`) |
+| `GET /docs` | public | Interactive API documentation (OpenAPI/Swagger UI) |
+| `GET /health` | public | Liveness + catalog size |
+| `GET /catalog` | public | Discovered sources (no state) |
+| `GET /sources` | public | All sources with last-known status |
+| `GET /sources/{repo}/{plugin}` | public | Cached status; `?refresh=true` forces a check (**admin**) |
+| `POST /sources/{repo}/{plugin}/check` | **admin** | Force a fresh check of one source |
+| `POST /admin/sync` | **admin** | Re-pull repos & rediscover |
+| `POST /admin/refresh` | **admin** | Check every source now |
 
-Reads (`GET`) always return the last cached result so consumers can poll
-freely — live checks happen only on the scheduler, `POST …/check`, or
-`?refresh=true`.
+Reads (`GET`) are **public and read-only** — they return the last cached result,
+so consumers can poll freely; live checks happen on the scheduler, or via the
+admin operations below.
+
+### Admin auth
+Mutating operations require a shared secret set via **`PULSE_ADMIN_TOKEN`**:
+
+- If `PULSE_ADMIN_TOKEN` is **unset**, those operations are **disabled** (the API
+  and dashboard are read-only). The app still self-populates via the scheduler.
+- If set, send it as `Authorization: Bearer <token>` (or an `X-Admin-Token`
+  header). The **dashboard** has an **“admin” button**: click it, paste the
+  token (kept in the browser's `localStorage`), and the Re-check-all / Sync-repos
+  buttons appear; otherwise they're hidden.
+
+```bash
+curl -X POST localhost:8080/admin/refresh -H "Authorization: Bearer $PULSE_ADMIN_TOKEN"
+```
+
+For stronger protection, also front the service with your platform's auth (e.g.
+an ALB/API-Gateway authorizer); the token is app-level defense-in-depth.
 
 Example response:
 
@@ -190,6 +207,7 @@ All settings are env vars prefixed `PULSE_` (see `src/biothings_pulse/config.py`
 | `PULSE_SCHEDULER_TICK` | `3600` | How often the scheduler evaluates due-ness (s) |
 | `PULSE_SYNC_ON_STARTUP` | `true` | Sync + discover + initial due-check at boot |
 | `PULSE_MAX_CHECK_WORKERS` | `8` | Check threadpool size |
+| `PULSE_ADMIN_TOKEN` | – | Secret for admin ops; unset = admin disabled (read-only) |
 
 ### Adding a new repo of plugins
 

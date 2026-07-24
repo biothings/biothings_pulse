@@ -11,7 +11,8 @@ locals {
     PULSE_SYNC_ON_STARTUP    = "true"
     PULSE_PORT               = tostring(var.container_port)
   }
-  environment = merge(local.base_environment, var.extra_environment)
+  admin_env = var.admin_token != "" ? { PULSE_ADMIN_TOKEN = var.admin_token } : {}
+  environment = merge(local.base_environment, local.admin_env, var.extra_environment)
 }
 
 # --- Networking (default VPC unless overridden) ----------------------------

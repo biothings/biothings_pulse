@@ -6,39 +6,45 @@ from biothings_pulse.config import Settings
 from biothings_pulse.main import create_app
 from biothings_pulse.plugins.models import PluginRef
 
+ADMIN = {"Authorization": "Bearer test-token"}
 
-@pytest.fixture
-def client(tmp_path, monkeypatch):
-    # Canned check result so the API tests need no network / SDK.
-    def fake_check(ref, settings):
-        return CheckResult(
-            status="ok",
-            latest_version="2024-10",
-            download_urls=["http://example.com/f.tsv"],
-            schedule="0 2 * * 0",
-        )
 
-    monkeypatch.setattr("biothings_pulse.service.check_plugin", fake_check)
+def _fake_check(ref, settings):
+    return CheckResult(
+        status="ok",
+        latest_version="2024-10",
+        download_urls=["http://example.com/f.tsv"],
+        schedule="0 2 * * 0",
+    )
 
+
+def _make_client(tmp_path, monkeypatch, **overrides):
+    monkeypatch.setattr("biothings_pulse.service.check_plugin", _fake_check)
     settings = Settings(
         sync_on_startup=False,
         scheduler_enabled=False,
         store_backend="sqlite",
         sqlite_path=tmp_path / "state.db",
+        **overrides,
     )
     app = create_app(settings)
-    with TestClient(app) as c:
-        # Manually populate the catalog (no git sync in tests).
-        c.app.state.service._catalog["myrepo/mysrc"] = PluginRef(
-            repo="myrepo", name="mysrc", plugin_type="manifest", path=tmp_path
-        )
-        yield c
+    c = TestClient(app)
+    c.__enter__()
+    c.app.state.service._catalog["myrepo/mysrc"] = PluginRef(
+        repo="myrepo", name="mysrc", plugin_type="manifest", path=tmp_path
+    )
+    return c
+
+
+@pytest.fixture
+def client(tmp_path, monkeypatch):
+    c = _make_client(tmp_path, monkeypatch, admin_token="test-token")
+    yield c
+    c.__exit__(None, None, None)
 
 
 def test_health(client):
-    resp = client.get("/health")
-    assert resp.status_code == 200
-    body = resp.json()
+    body = client.get("/health").json()
     assert body["status"] == "ok"
     assert body["catalog_size"] == 1
 
@@ -59,7 +65,7 @@ def test_dashboard_landing_page(client):
 
 
 def test_check_records_current_version(client):
-    resp = client.post("/sources/myrepo/mysrc/check")
+    resp = client.post("/sources/myrepo/mysrc/check", headers=ADMIN)
     assert resp.status_code == 200
     body = resp.json()
     assert body["current_version"] == "2024-10"
@@ -75,8 +81,6 @@ def test_check_records_current_version(client):
 
 
 def test_get_returns_pending_without_checking(client):
-    # Never checked yet: GET must return a cheap 'pending' record, not run a
-    # (potentially slow) live check.
     body = client.get("/sources/myrepo/mysrc").json()
     assert body["status"] == "pending"
     assert body["current_version"] is None
@@ -88,18 +92,54 @@ def test_acknowledge_endpoint_removed(client):
 
 def test_unknown_source_404(client):
     assert client.get("/sources/nope/nope").status_code == 404
-    assert client.post("/sources/nope/nope/check").status_code == 404
+    assert client.post("/sources/nope/nope/check", headers=ADMIN).status_code == 404
 
 
 def test_refresh_all(client):
-    resp = client.post("/admin/refresh")
+    resp = client.post("/admin/refresh", headers=ADMIN)
     assert resp.status_code == 200
     assert resp.json()["count"] == 1
 
 
 def test_run_due_checks_respects_schedule(client):
     svc = client.app.state.service
-    # Never checked -> due -> checked once.
     assert svc.run_due_checks() == 1
-    # fake_check reports a weekly cron; just-checked source isn't due again now.
     assert svc.run_due_checks() == 0
+
+
+# -- admin security -------------------------------------------------------
+
+def test_reads_are_public(client):
+    for path in ("/health", "/catalog", "/sources", "/sources/myrepo/mysrc"):
+        assert client.get(path).status_code == 200  # no token needed
+
+
+def test_admin_requires_valid_token(client):
+    assert client.post("/admin/refresh").status_code == 401  # missing
+    assert (
+        client.post("/admin/refresh", headers={"Authorization": "Bearer nope"}).status_code
+        == 401  # wrong
+    )
+    assert client.post("/admin/refresh", headers=ADMIN).status_code == 200
+    # X-Admin-Token header is also accepted (use refresh; sync would rebuild the
+    # injected test catalog via a real git sync)
+    assert (
+        client.post("/admin/refresh", headers={"X-Admin-Token": "test-token"}).status_code
+        == 200
+    )
+    # ?refresh=true is admin-gated too
+    assert client.get("/sources/myrepo/mysrc?refresh=true").status_code == 401
+    assert (
+        client.get("/sources/myrepo/mysrc?refresh=true", headers=ADMIN).status_code == 200
+    )
+
+
+def test_admin_disabled_when_no_token(tmp_path, monkeypatch):
+    c = _make_client(tmp_path, monkeypatch, admin_token=None)
+    try:
+        assert c.get("/health").status_code == 200  # reads still work
+        assert c.post("/admin/refresh").status_code == 403
+        assert c.post("/admin/refresh", headers=ADMIN).status_code == 403  # still off
+        assert c.post("/sources/myrepo/mysrc/check").status_code == 403
+    finally:
+        c.__exit__(None, None, None)

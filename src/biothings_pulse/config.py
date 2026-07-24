@@ -125,6 +125,12 @@ class Settings(BaseSettings):
     port: int = 8080
     log_level: str = "info"
 
+    admin_token: Optional[str] = None
+    """Shared secret for admin/mutating operations (sync, refresh, force-check).
+    Unset => those operations are disabled (the API/dashboard are read-only).
+    When set, clients must send it as `Authorization: Bearer <token>` (or the
+    `X-Admin-Token` header)."""
+
     def load_registry(self) -> Registry:
         path = self.registry_file or _DEFAULT_REGISTRY_FILE
         return load_registry(path)
