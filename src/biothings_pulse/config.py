@@ -18,6 +18,10 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 _DATA_DIR = Path(__file__).parent / "data"
 _DEFAULT_REGISTRY_FILE = _DATA_DIR / "default_repos.yaml"
 
+# Dev-friendly default admin token; override in production (a warning is logged
+# while this default is in effect).
+DEFAULT_ADMIN_TOKEN = "changeme"
+
 
 class RepoSpec(BaseModel):
     """A single Hub repository to monitor."""
@@ -125,11 +129,13 @@ class Settings(BaseSettings):
     port: int = 8080
     log_level: str = "info"
 
-    admin_token: Optional[str] = None
+    admin_token: Optional[str] = DEFAULT_ADMIN_TOKEN
     """Shared secret for admin/mutating operations (sync, refresh, force-check).
-    Unset => those operations are disabled (the API/dashboard are read-only).
-    When set, clients must send it as `Authorization: Bearer <token>` (or the
-    `X-Admin-Token` header)."""
+    Defaults to ``"changeme"`` so admin mode works on a dev server out of the box;
+    **override with a real secret in production** (a warning is logged while the
+    default is in use). Set to empty to disable admin ops entirely (read-only).
+    Clients send it as `Authorization: Bearer <token>` (or the `X-Admin-Token`
+    header); the dashboard has an "admin" unlock button."""
 
     def load_registry(self) -> Registry:
         path = self.registry_file or _DEFAULT_REGISTRY_FILE

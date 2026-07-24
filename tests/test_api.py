@@ -135,6 +135,20 @@ def test_admin_requires_valid_token(client):
     )
 
 
+def test_default_admin_token_enables_admin(tmp_path, monkeypatch):
+    monkeypatch.delenv("PULSE_ADMIN_TOKEN", raising=False)
+    c = _make_client(tmp_path, monkeypatch)  # no override -> default "changeme"
+    try:
+        assert c.get("/health").json()["admin_enabled"] is True
+        assert c.post("/admin/refresh").status_code == 401  # token still required
+        assert (
+            c.post("/admin/refresh", headers={"Authorization": "Bearer changeme"}).status_code
+            == 200
+        )
+    finally:
+        c.__exit__(None, None, None)
+
+
 def test_admin_disabled_when_no_token(tmp_path, monkeypatch):
     c = _make_client(tmp_path, monkeypatch, admin_token=None)
     try:

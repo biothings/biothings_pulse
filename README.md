@@ -150,14 +150,17 @@ so consumers can poll freely; live checks happen on the scheduler, or via the
 admin operations below.
 
 ### Admin auth
-Mutating operations require a shared secret set via **`PULSE_ADMIN_TOKEN`**:
+Mutating operations require a shared secret, **`PULSE_ADMIN_TOKEN`**:
 
-- If `PULSE_ADMIN_TOKEN` is **unset**, those operations are **disabled** (the API
-  and dashboard are read-only). The app still self-populates via the scheduler.
-- If set, send it as `Authorization: Bearer <token>` (or an `X-Admin-Token`
-  header). The **dashboard** has an **“admin” button**: click it, paste the
-  token (kept in the browser's `localStorage`), and the Re-check-all / Sync-repos
-  buttons appear; otherwise they're hidden.
+- It **defaults to `"changeme"`** so admin mode works on a dev server out of the
+  box — **set a real secret in production** (a warning is logged while the default
+  is in use). Set it to an **empty** value to disable admin ops entirely
+  (fully read-only).
+- Send it as `Authorization: Bearer <token>` (or an `X-Admin-Token` header). The
+  **dashboard** has an **“admin” button**: click it, paste the token (kept in the
+  browser's `localStorage`), and the Re-check-all / Sync-repos / per-row re-check
+  actions appear; otherwise they're hidden. `GET /health` reports
+  `admin_enabled`.
 
 ```bash
 curl -X POST localhost:8080/admin/refresh -H "Authorization: Bearer $PULSE_ADMIN_TOKEN"
@@ -207,7 +210,7 @@ All settings are env vars prefixed `PULSE_` (see `src/biothings_pulse/config.py`
 | `PULSE_SCHEDULER_TICK` | `3600` | How often the scheduler evaluates due-ness (s) |
 | `PULSE_SYNC_ON_STARTUP` | `true` | Sync + discover + initial due-check at boot |
 | `PULSE_MAX_CHECK_WORKERS` | `8` | Check threadpool size |
-| `PULSE_ADMIN_TOKEN` | – | Secret for admin ops; unset = admin disabled (read-only) |
+| `PULSE_ADMIN_TOKEN` | `changeme` | Secret for admin ops (override in prod); empty = admin disabled (read-only) |
 
 ### Adding a new repo of plugins
 

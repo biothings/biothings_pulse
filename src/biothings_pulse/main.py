@@ -11,7 +11,7 @@ from fastapi import FastAPI
 from . import __version__
 from .api.routes import router
 from .bootstrap import ensure_biothings_ready
-from .config import Settings, get_settings
+from .config import DEFAULT_ADMIN_TOKEN, Settings, get_settings
 from .scheduler import RefreshScheduler
 from .service import PulseService
 
@@ -63,6 +63,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         level=getattr(logging, settings.log_level.upper(), logging.INFO),
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
+    if settings.admin_token == DEFAULT_ADMIN_TOKEN:
+        logger.warning(
+            "PULSE_ADMIN_TOKEN is the default %r — fine for dev, but set a real "
+            "secret in production.",
+            DEFAULT_ADMIN_TOKEN,
+        )
     app = FastAPI(
         title="BioThings Pulse",
         version=__version__,
