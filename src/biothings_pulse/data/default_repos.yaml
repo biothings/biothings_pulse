@@ -54,3 +54,5 @@ repos:
   - name: NAR.API
     git_url: https://github.com/biothings/NAR.API.git
     ref: null
+  - name: DogPark
+    git_url: https://github.com/NCATSTranslator/DogPark-Ranger.git
