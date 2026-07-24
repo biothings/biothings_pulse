@@ -5,7 +5,7 @@ output "ecr_repository_url" {
 
 output "alb_dns_name" {
   value       = aws_lb.this.dns_name
-  description = "Public URL: http://<this>/health, /docs, /sources ..."
+  description = "Public URL: http://<this>/ (dashboard), /api/health, /api/docs, /api/sources ..."
 }
 
 output "dynamodb_table" {
