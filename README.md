@@ -92,7 +92,7 @@ source .venv/bin/activate
 
 # Run the API (syncs repos + discovers plugins in the background on startup)
 uvicorn biothings_pulse.main:app --reload --port 8080
-# open http://localhost:8080/docs
+# dashboard: http://localhost:8080/   ·   API docs: http://localhost:8080/docs
 ```
 
 > **BioThings SDK:** currently pinned to a specific commit of the
@@ -121,6 +121,8 @@ biothings-pulse serve --reload             # run the API server
 
 | Method & path | Purpose |
 |---|---|
+| `GET /` | **Dashboard** — live pulse of all sources (links to `/docs`) |
+| `GET /docs` | Interactive API documentation (OpenAPI/Swagger UI) |
 | `GET /health` | Liveness + catalog size |
 | `GET /catalog` | Discovered sources (no state) |
 | `GET /sources` | All sources with last-known status |
