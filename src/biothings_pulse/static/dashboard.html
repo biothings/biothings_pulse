@@ -5,6 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <meta name="color-scheme" content="dark light" />
 <title>BioThings Pulse</title>
+<script>/* apply saved theme before paint to avoid a flash */
+  try { var _t = localStorage.getItem('pulse-theme'); if (_t && _t !== 'auto') document.documentElement.setAttribute('data-theme', _t); } catch (e) {}
+</script>
 <style>
   :root {
     color-scheme: dark light;     /* adapt native controls (scrollbars, inputs) */
@@ -16,9 +19,17 @@
     --ok: #3fb950; --update: #e3b341; --err: #f85149; --unsup: #6a7480;
     --mono: ui-monospace, "SF Mono", SFMono-Regular, "JetBrains Mono", Menlo, Consolas, monospace;
   }
-  /* Light theme — follows the OS/browser preference automatically */
+  /* Light theme — explicit via the toggle (data-theme="light"). */
+  :root[data-theme="light"] {
+    --bg: #f6f8fa; --surface: #ffffff; --surface-2: #f2f5f8; --hover: #f4f6f9;
+    --line: #e3e8ee; --line-2: #d5dbe2;
+    --ink: #1f2328; --dim: #57606a; --faint: #8b95a1;
+    --accent: #17957c;
+    --ok: #1a7f37; --update: #9a6700; --err: #cf222e; --unsup: #8b95a1;
+  }
+  /* Auto mode (no explicit choice): follow the OS/browser preference. */
   @media (prefers-color-scheme: light) {
-    :root {
+    :root:not([data-theme]) {
       --bg: #f6f8fa; --surface: #ffffff; --surface-2: #f2f5f8; --hover: #f4f6f9;
       --line: #e3e8ee; --line-2: #d5dbe2;
       --ink: #1f2328; --dim: #57606a; --faint: #8b95a1;
@@ -51,6 +62,12 @@
   .nav { display: flex; align-items: center; gap: 20px; font-size: 13px; }
   .nav a { color: var(--dim); }
   .nav a:hover { color: var(--ink); text-decoration: none; }
+  .theme-toggle { display: inline-flex; border: 1px solid var(--line-2); border-radius: 3px; overflow: hidden; }
+  .theme-toggle button { border: 0; border-radius: 0; background: transparent; color: var(--faint);
+    font-family: var(--mono); font-size: 11px; letter-spacing: .3px; padding: 5px 9px; cursor: pointer; }
+  .theme-toggle button + button { border-left: 1px solid var(--line-2); }
+  .theme-toggle button:hover { color: var(--ink); background: var(--hover); }
+  .theme-toggle button.active { color: var(--accent); background: var(--surface-2); }
 
   main { max-width: 1320px; margin: 0 auto; padding: 24px 26px 40px; }
 
@@ -81,11 +98,6 @@
   button.primary:hover { background: rgba(77,208,177,.08); border-color: var(--accent); }
   button:disabled { opacity: .5; cursor: default; }
 
-  .seclabel { display: flex; justify-content: space-between; align-items: baseline;
-    font-family: var(--mono); font-size: 11px; letter-spacing: 1.3px; text-transform: uppercase;
-    color: var(--faint); padding-bottom: 9px; margin-bottom: 13px; border-bottom: 1px solid var(--line); }
-  .seclabel .fig { color: var(--dim); }
-  .seclabel .fig b { color: var(--accent); font-weight: 600; }
   .table-wrap { border: 1px solid var(--line); border-radius: 3px; overflow-x: auto; background: var(--surface); }
   table { width: 100%; border-collapse: collapse; }
   th, td { text-align: left; padding: 11px 16px; border-bottom: 1px solid var(--line); white-space: nowrap; }
@@ -139,7 +151,11 @@
     </div>
   </div>
   <nav class="nav">
-    <a href="/">Dashboard</a>
+    <div class="theme-toggle" id="theme-toggle" role="group" aria-label="Theme">
+      <button type="button" data-theme-set="auto">auto</button>
+      <button type="button" data-theme-set="light">light</button>
+      <button type="button" data-theme-set="dark">dark</button>
+    </div>
     <a href="/docs">API Docs &rarr;</a>
   </nav>
 </header>
@@ -153,11 +169,6 @@
     <button id="btn-refresh" title="Reload cached statuses">Refresh</button>
     <button id="btn-recheck-all" class="primary" title="Force a fresh check of every source">Re-check all</button>
     <button id="btn-sync" title="Re-pull repos and rediscover plugins">Sync repos</button>
-  </div>
-
-  <div class="seclabel">
-    <span class="fig"><b>Fig.01</b> &nbsp;|&nbsp; Monitored sources</span>
-    <span id="seclabel-count"></span>
   </div>
 
   <div class="table-wrap">
@@ -239,19 +250,13 @@ function renderRows() {
       <td>${urlCell}</td>
       <td class="faint mono">${timeAgo(d.checked_at)}</td>
       <td><div class="acts">
-        <a class="lnk" href="${jsonUrl}" target="_blank" rel="noopener" title="View this source's JSON">JSON</a>
-        <button class="lnk" data-act="check" data-repo="${esc(d.repo)}" data-plugin="${esc(d.plugin)}">re-check</button>
         ${d.has_update ? `<button class="lnk" data-act="ack" data-repo="${esc(d.repo)}" data-plugin="${esc(d.plugin)}">ack</button>` : ''}
       </div></td>
     </tr>`;
   }).join('');
 }
 
-function render() {
-  renderStats();
-  renderRows();
-  $('#seclabel-count').textContent = DATA.length ? DATA.length + ' entries' : '';
-}
+function render() { renderStats(); renderRows(); }
 
 async function load() {
   try {
@@ -287,6 +292,25 @@ $('#rows').addEventListener('click', (e) => {
     await load();
   });
 });
+
+// --- Theme toggle: auto (follow OS) / light / dark, persisted ---
+const THEME_KEY = 'pulse-theme';
+function applyTheme(t) {
+  if (t === 'auto') document.documentElement.removeAttribute('data-theme');
+  else document.documentElement.setAttribute('data-theme', t);
+  document.querySelectorAll('#theme-toggle button').forEach(b =>
+    b.classList.toggle('active', b.dataset.themeSet === t));
+}
+$('#theme-toggle').addEventListener('click', (e) => {
+  const b = e.target.closest('button[data-theme-set]');
+  if (!b) return;
+  const t = b.dataset.themeSet;
+  try { localStorage.setItem(THEME_KEY, t); } catch (_) {}
+  applyTheme(t);
+});
+let _saved = 'auto';
+try { _saved = localStorage.getItem(THEME_KEY) || 'auto'; } catch (_) {}
+applyTheme(_saved);
 
 load();
 setInterval(load, 30000);  // keep the pulse live
