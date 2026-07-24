@@ -5,8 +5,10 @@ from __future__ import annotations
 import logging
 import threading
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI
+from fastapi.responses import FileResponse
 
 from . import __version__
 from .api.routes import router
@@ -16,6 +18,8 @@ from .scheduler import RefreshScheduler
 from .service import PulseService
 
 logger = logging.getLogger(__name__)
+
+_DASHBOARD_FILE = Path(__file__).resolve().parent / "static" / "dashboard.html"
 
 
 def _initial_sync(service: PulseService) -> None:
@@ -77,9 +81,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "reports whether a new data release is available."
         ),
         lifespan=lifespan,
+        # API + its docs live under /api; "/" serves the dashboard.
+        docs_url="/api/docs",
+        redoc_url="/api/redoc",
+        openapi_url="/api/openapi.json",
     )
     app.state.settings = settings
-    app.include_router(router)  # serves the dashboard at "/"
+    app.include_router(router, prefix="/api")
+
+    @app.get("/", include_in_schema=False)
+    def dashboard() -> FileResponse:
+        return FileResponse(_DASHBOARD_FILE, media_type="text/html")
+
     return app
 
 

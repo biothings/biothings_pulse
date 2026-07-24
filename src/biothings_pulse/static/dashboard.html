@@ -181,7 +181,7 @@
       </div>
     </div>
     <nav class="nav">
-      <a href="/docs">API Docs &rarr;</a>
+      <a href="/api/docs">API Docs &rarr;</a>
       <button type="button" id="theme-btn" class="icon-btn" title="Theme" aria-label="Toggle theme"></button>
     </nav>
   </div>
@@ -347,7 +347,7 @@ function renderRows() {
       ? `<span class="mono" title="${esc(urls.join('\n'))}" style="cursor:help">${urls.length}</span>`
       : '<span class="faint">0</span>';
     const errCell = d.error ? `<div class="err-msg" title="${esc(d.error)}">${esc(d.error)}</div>` : '';
-    const jsonUrl = `/sources/${encodeURIComponent(d.repo)}/${encodeURIComponent(d.plugin)}`;
+    const jsonUrl = `/api/sources/${encodeURIComponent(d.repo)}/${encodeURIComponent(d.plugin)}`;
     const curSeen = d.current_version_at ? `<div class="sub">first seen ${agoText(d.current_version_at)}</div>` : '';
     const changed = isChanged(d);
     const prevCell = d.last_version
@@ -375,14 +375,14 @@ function render() { renderStats(); renderRepos(); renderRows(); }
 
 async function load() {
   try {
-    const [sources, health] = await Promise.all([api('/sources'), api('/health').catch(()=>null)]);
+    const [sources, health] = await Promise.all([api('/api/sources'), api('/api/health').catch(()=>null)]);
     DATA = sources.sources || [];
     adminEnabled = !!(health && health.admin_enabled);
     if (!adminEnabled && adminToken()) setAdmin('');  // drop a token that can't work
     else renderAdmin();
     render();
     const hv = health ? ` · v${health.version} · catalog ${health.catalog_size}` : '';
-    $('#footer').innerHTML = `updated ${new Date().toLocaleTimeString()}${hv} · <a href="/docs">API documentation</a>`;
+    $('#footer').innerHTML = `updated ${new Date().toLocaleTimeString()}${hv} · <a href="/api/docs">API documentation</a>`;
   } catch (e) {
     $('#rows').innerHTML = `<tr><td colspan="6" class="empty">Failed to load: ${esc(e.message)}</td></tr>`;
   }
@@ -415,15 +415,15 @@ $('#repos').addEventListener('click', (e) => {
   renderRows();
 });
 $('#btn-refresh').addEventListener('click', (e) => withBusy(e.currentTarget, load));
-$('#btn-recheck-all').addEventListener('click', (e) => withBusy(e.currentTarget, async () => { await api('/admin/refresh','POST',true); await load(); }));
-$('#btn-sync').addEventListener('click', (e) => withBusy(e.currentTarget, async () => { await api('/admin/sync','POST',true); await load(); }));
+$('#btn-recheck-all').addEventListener('click', (e) => withBusy(e.currentTarget, async () => { await api('/api/admin/refresh','POST',true); await load(); }));
+$('#btn-sync').addEventListener('click', (e) => withBusy(e.currentTarget, async () => { await api('/api/admin/sync','POST',true); await load(); }));
 // Per-row admin re-check icon (delegated).
 $('#rows').addEventListener('click', (e) => {
   const btn = e.target.closest('button[data-act="check"]');
   if (!btn) return;
   const { repo, plugin } = btn.dataset;
   withBusy(btn, async () => {
-    await api(`/sources/${encodeURIComponent(repo)}/${encodeURIComponent(plugin)}/check`, 'POST', true);
+    await api(`/api/sources/${encodeURIComponent(repo)}/${encodeURIComponent(plugin)}/check`, 'POST', true);
     await load();
   });
 });

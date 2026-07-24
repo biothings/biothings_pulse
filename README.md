@@ -76,15 +76,15 @@ so consumers can poll freely; checks happen only via the scheduler or explicitly
   checks only the sources that are *due* per their schedule. A never-checked
   source is always due, so a fresh deployment fills in on the first tick; a warm
   store (state persists) only re-checks what's actually due.
-- **On demand.** `GET /sources/{repo}/{plugin}` returns the cached status without
-  checking. `POST /sources/{repo}/{plugin}/check` forces one source now;
-  `POST /admin/refresh` force-checks every source.
+- **On demand.** `GET /api/sources/{repo}/{plugin}` returns the cached status without
+  checking. `POST /api/sources/{repo}/{plugin}/check` forces one source now;
+  `POST /api/admin/refresh` force-checks every source.
 - **On startup.** If `PULSE_SYNC_ON_STARTUP=true` (default), Pulse git-syncs the
   repos, rediscovers plugins, and runs the due-check once in the background.
 
 Each source's `next_check_at` (in the API/dashboard) reflects its schedule. For a
 multi-instance deployment, set `PULSE_SCHEDULER_ENABLED=false` and drive
-`POST /admin/refresh` centrally (e.g. AWS EventBridge Scheduler) so only one
+`POST /api/admin/refresh` centrally (e.g. AWS EventBridge Scheduler) so only one
 sweep runs at a time.
 
 ## Quick start (local dev)
@@ -99,7 +99,7 @@ source .venv/bin/activate
 
 # Run the API (syncs repos + discovers plugins in the background on startup)
 biothings-pulse serve --reload --port 8080
-# dashboard: http://localhost:8080/   ·   API docs: http://localhost:8080/docs
+# dashboard: http://localhost:8080/   ·   API docs: http://localhost:8080/api/docs
 ```
 
 > Prefer `biothings-pulse serve --reload` over a bare
@@ -133,17 +133,19 @@ biothings-pulse serve --reload             # run the API server
 
 ## API
 
+All API endpoints are under **`/api`**; `/` serves the dashboard.
+
 | Method & path | Auth | Purpose |
 |---|---|---|
-| `GET /` | public | **Dashboard** — live pulse of all sources (links to `/docs`) |
-| `GET /docs` | public | Interactive API documentation (OpenAPI/Swagger UI) |
-| `GET /health` | public | Liveness + catalog size |
-| `GET /catalog` | public | Discovered sources (no state) |
-| `GET /sources` | public | All sources with last-known status |
-| `GET /sources/{repo}/{plugin}` | public | Cached status; `?refresh=true` forces a check (**admin**) |
-| `POST /sources/{repo}/{plugin}/check` | **admin** | Force a fresh check of one source |
-| `POST /admin/sync` | **admin** | Re-pull repos & rediscover |
-| `POST /admin/refresh` | **admin** | Check every source now |
+| `GET /` | public | **Dashboard** — live pulse of all sources (links to `/api/docs`) |
+| `GET /api/docs` | public | Interactive API documentation (OpenAPI/Swagger UI) |
+| `GET /api/health` | public | Liveness + catalog size + `admin_enabled` |
+| `GET /api/catalog` | public | Discovered sources (no state) |
+| `GET /api/sources` | public | All sources with last-known status |
+| `GET /api/sources/{repo}/{plugin}` | public | Cached status; `?refresh=true` forces a check (**admin**) |
+| `POST /api/sources/{repo}/{plugin}/check` | **admin** | Force a fresh check of one source |
+| `POST /api/admin/sync` | **admin** | Re-pull repos & rediscover |
+| `POST /api/admin/refresh` | **admin** | Check every source now |
 
 Reads (`GET`) are **public and read-only** — they return the last cached result,
 so consumers can poll freely; live checks happen on the scheduler, or via the
@@ -159,11 +161,11 @@ Mutating operations require a shared secret, **`PULSE_ADMIN_TOKEN`**:
 - Send it as `Authorization: Bearer <token>` (or an `X-Admin-Token` header). The
   **dashboard** has an **“admin” button**: click it, paste the token (kept in the
   browser's `localStorage`), and the Re-check-all / Sync-repos / per-row re-check
-  actions appear; otherwise they're hidden. `GET /health` reports
+  actions appear; otherwise they're hidden. `GET /api/health` reports
   `admin_enabled`.
 
 ```bash
-curl -X POST localhost:8080/admin/refresh -H "Authorization: Bearer $PULSE_ADMIN_TOKEN"
+curl -X POST localhost:8080/api/admin/refresh -H "Authorization: Bearer $PULSE_ADMIN_TOKEN"
 ```
 
 For stronger protection, also front the service with your platform's auth (e.g.
@@ -246,7 +248,7 @@ entry, and point `PULSE_REGISTRY_FILE` at your copy.
 
    Field reference:
    - **`name`** — unique short name; it becomes the `{repo}` segment in
-     `GET /sources/{repo}/{plugin}`.
+     `GET /api/sources/{repo}/{plugin}`.
    - **`git_url`** — HTTPS clone URL.
    - **`ref`** — branch, tag, or commit to check out; `null` uses the remote's
      default branch.
@@ -275,11 +277,11 @@ entry, and point `PULSE_REGISTRY_FILE` at your copy.
    ```bash
    export PULSE_REGISTRY_FILE=/path/to/my_registry.yaml
    # then either restart the server, or (while it's running) reload live:
-   curl -X POST localhost:8080/admin/sync
+   curl -X POST localhost:8080/api/admin/sync
    ```
 
    `admin/sync` re-clones/pulls every repo and rediscovers plugins. Confirm with
-   `GET /catalog` (or `biothings-pulse list`). A repo that fails to clone is
+   `GET /api/catalog` (or `biothings-pulse list`). A repo that fails to clone is
    logged and skipped — it won't break discovery of the others.
 
 > A repo does **not** have to be a full Hub — a repo containing only a `plugins/`
@@ -330,7 +332,7 @@ curl "http://$(terraform output -raw alb_dns_name)/health"
 
 The state store is DynamoDB and the in-app scheduler refreshes on an interval.
 To scale beyond one task, set `scheduler_enabled = false` and drive
-`POST /admin/refresh` centrally (e.g. EventBridge Scheduler — hook noted in
+`POST /api/admin/refresh` centrally (e.g. EventBridge Scheduler — hook noted in
 `main.tf`).
 
 ## Development
