@@ -17,10 +17,13 @@
 defaults:
   manifest_globs:
     - "plugins/*/manifest.json"
+    # Some repos (e.g. mygeneset.info) keep plugins under src/plugins/
+    - "src/plugins/*/manifest.json"
   advanced_globs:
     - "**/hub/dataload/sources/*"
     # Some repos (e.g. pending.api) keep advanced plugins directly under plugins/
     - "plugins/*"
+    - "src/plugins/*"
 
 repos:
   - name: mygene.info

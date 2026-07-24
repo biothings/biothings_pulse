@@ -38,10 +38,17 @@ class Registry(BaseModel):
     """The full set of monitored repositories plus default glob patterns."""
 
     manifest_globs: List[str] = Field(
-        default_factory=lambda: ["plugins/*/manifest.json"]
+        default_factory=lambda: [
+            "plugins/*/manifest.json",
+            "src/plugins/*/manifest.json",
+        ]
     )
     advanced_globs: List[str] = Field(
-        default_factory=lambda: ["**/hub/dataload/sources/*", "plugins/*"]
+        default_factory=lambda: [
+            "**/hub/dataload/sources/*",
+            "plugins/*",
+            "src/plugins/*",
+        ]
     )
     repos: List[RepoSpec] = Field(default_factory=list)
 
@@ -127,9 +134,9 @@ def load_registry(path: Path) -> Registry:
     defaults = raw.get("defaults") or {}
     return Registry(
         manifest_globs=defaults.get("manifest_globs")
-        or ["plugins/*/manifest.json"],
+        or ["plugins/*/manifest.json", "src/plugins/*/manifest.json"],
         advanced_globs=defaults.get("advanced_globs")
-        or ["**/hub/dataload/sources/*", "plugins/*"],
+        or ["**/hub/dataload/sources/*", "plugins/*", "src/plugins/*"],
         repos=[RepoSpec(**r) for r in (raw.get("repos") or [])],
     )
 
