@@ -16,6 +16,8 @@ from __future__ import annotations
 
 import json
 import logging
+import re
+import sys
 from collections.abc import Iterable
 from pathlib import Path
 from typing import Dict, List, Set
@@ -30,6 +32,31 @@ logger = logging.getLogger(__name__)
 _SKIP_PREFIXES = ("biothings",)
 
 _PLUGIN_REQ_FILES = ("requirements.txt", "requirements-hub.txt", "requirements_hub.txt")
+
+# Standard-library module names (empty on <3.10, where filtering is skipped).
+_STDLIB = getattr(sys, "stdlib_module_names", frozenset())
+
+
+def _dist_name(req: str) -> str:
+    """The distribution/package name from a requirement line (drop version/extras)."""
+    return re.split(r"[<>=!~;\[\s]", req, maxsplit=1)[0].strip()
+
+
+def _drop_stdlib(reqs: Iterable[str]) -> List[str]:
+    """Drop requirements that are actually stdlib modules (e.g. asyncio, tarfile)
+    — installing those from PyPI is wrong/harmful — and warn about each."""
+    kept, dropped = [], []
+    for r in reqs:
+        if _dist_name(r).replace("-", "_").lower() in _STDLIB:
+            dropped.append(r)
+        else:
+            kept.append(r)
+    if dropped:
+        logger.warning(
+            "Ignoring stdlib module(s) listed as plugin requirements: %s",
+            ", ".join(sorted(set(dropped))),
+        )
+    return kept
 
 
 def _parse_req_file(path: Path) -> List[str]:
@@ -83,7 +110,7 @@ def collect_requirements(refs: Iterable[PluginRef]) -> List[str]:
             out.update(_manifest_requires(ref.manifest_path))
         elif ref.plugin_type == "advanced":
             out.update(_files_in(ref.path, _PLUGIN_REQ_FILES))
-    return sorted(out)
+    return sorted(_drop_stdlib(out))
 
 
 def _clean(reqs: Iterable[str]) -> List[str]:
@@ -106,4 +133,4 @@ def collect_repo_requirements(
         repo_path = paths.get(spec.name)
         if repo_path is not None:
             out.update(_files_in(Path(repo_path), spec.requirements_files))
-    return sorted(out)
+    return sorted(_drop_stdlib(out))
