@@ -323,18 +323,20 @@ moving from the first to the second is a config change plus an apply.
 
 ### Minimal (single EC2)
 
-`deploy/ec2/` runs the whole service as one Docker container on a small
-`t4g.small`, with SQLite state on the instance disk — no load balancer, no
-registry (the image is built on the box from shipped source).
+`deploy/ec2/` runs the whole service on a small `t4g.small` — the app container
+behind a [Caddy](https://caddyserver.com) reverse proxy that provisions and
+renews a Let's Encrypt cert automatically. SQLite state on the instance disk; no
+load balancer, no registry (the image is built on the box).
 
 ```bash
-KEY_NAME=my-keypair ./deploy/ec2/launch.sh            # provision the box (optional)
-HOST=<public-ip> SSH_KEY=~/.ssh/my-keypair.pem \
-  ./deploy/ec2/deploy.sh                              # build + run under systemd
+# On the box (SSH in), with automatic HTTPS for your domain:
+curl -fsSL https://raw.githubusercontent.com/biothings/biothings_pulse/main/deploy/ec2/bootstrap.sh -o /tmp/pulse-setup.sh
+DOMAIN=pulse.biothings.io ADMIN_TOKEN='a-strong-secret' bash /tmp/pulse-setup.sh
 ```
 
-Re-run `deploy.sh` to update in place; state under `/var/lib/pulse` is preserved.
-Full options in [`deploy/ec2/README.md`](deploy/ec2/README.md).
+Point a DNS A record at the instance first so the cert can be issued. Re-run to
+update in place; state under `/var/lib/pulse` and the cert are preserved. Full
+options (incl. a laptop-driven `deploy.sh`) in [`deploy/ec2/README.md`](deploy/ec2/README.md).
 
 ### ECS Fargate + Terraform
 

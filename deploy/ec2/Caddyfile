@@ -1,0 +1,14 @@
+# Reverse proxy for BioThings Pulse. Fronts the app container and, when a real
+# domain is configured, terminates HTTPS with an automatically provisioned +
+# renewed Let's Encrypt certificate.
+#
+# PULSE_SITE_ADDRESS is set by the deploy scripts (run.sh):
+#   - a hostname, e.g. pulse.biothings.io  -> Caddy obtains a cert and redirects
+#     HTTP -> HTTPS automatically
+#   - ":80" (the default)                  -> plain HTTP, for a domain-less box
+#
+# To receive cert-expiry notices, add a global block above the site:
+#   { email you@biothings.io }
+{$PULSE_SITE_ADDRESS::80} {
+	reverse_proxy biothings-pulse:8080
+}
