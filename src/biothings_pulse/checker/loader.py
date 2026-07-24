@@ -63,6 +63,32 @@ def _repo_sys_path_entries(repo_path):
     return [e for e in entries if e.is_dir()]
 
 
+def _purge_new_repo_modules(before: set, repo_path) -> None:
+    """Drop modules imported during a load whose files live under ``repo_path``.
+
+    Repos share top-level package names (notably ``hub``). If one repo's ``hub``
+    stays cached in ``sys.modules``, another repo's ``import hub.dataload.X`` will
+    wrongly resolve against it. Purging the repo-local modules a load introduced
+    keeps each repo's packages isolated across loads. Non-repo modules (biothings,
+    third-party) are safe to keep cached and are left alone.
+    """
+    if repo_path is None:
+        return
+    root = str(Path(repo_path).resolve())
+    for name in set(sys.modules) - before:
+        mod = sys.modules.get(name)
+        if mod is None:
+            continue
+        locs = list(getattr(mod, "__path__", []) or [])
+        if getattr(mod, "__file__", None):
+            locs.append(mod.__file__)
+        try:
+            if any(str(Path(loc).resolve()).startswith(root) for loc in locs):
+                sys.modules.pop(name, None)
+        except (OSError, ValueError):
+            pass
+
+
 def _import_release_func(plugin_dir: Path, mod_spec: str, repo_path=None) -> Callable:
     """Import ``module:func`` for a manifest release function.
 
@@ -81,8 +107,7 @@ def _import_release_func(plugin_dir: Path, mod_spec: str, repo_path=None) -> Cal
 
     module_file = plugin_dir / f"{module}.py"
     added_paths: List[str] = []
-    purge_top = None
-    before_modules: set = set()
+    before_modules = set(sys.modules)
     try:
         if module_file.exists():
             if str(plugin_dir) not in sys.path:
@@ -99,8 +124,6 @@ def _import_release_func(plugin_dir: Path, mod_spec: str, repo_path=None) -> Cal
                 if str(entry) not in sys.path:
                     sys.path.insert(0, str(entry))
                     added_paths.append(str(entry))
-            purge_top = module.split(".")[0]
-            before_modules = set(sys.modules)
             mod = importlib.import_module(module)
         func = getattr(mod, funcname, None)
         if func is None:
@@ -112,10 +135,7 @@ def _import_release_func(plugin_dir: Path, mod_spec: str, repo_path=None) -> Cal
                 sys.path.remove(p)
             except ValueError:
                 pass
-        if purge_top:
-            for name in set(sys.modules) - before_modules:
-                if name == purge_top or name.startswith(purge_top + "."):
-                    sys.modules.pop(name, None)
+        _purge_new_repo_modules(before_modules, repo_path)
 
 
 _SCHEME_BASES = {"http": "http", "https": "http", "ftp": "ftp"}
@@ -321,6 +341,7 @@ def load_advanced_dumper(ref: PluginRef, work_dir: Path):
         entries.append(hub_root)
 
     added = []
+    before_modules = set(sys.modules)
     try:
         for entry in entries:
             if str(entry) not in sys.path:
@@ -350,6 +371,9 @@ def load_advanced_dumper(ref: PluginRef, work_dir: Path):
                 sys.path.remove(entry)
             except ValueError:
                 pass
+        # Drop this repo's cached packages (e.g. its own ``hub``) so another
+        # repo's same-named packages import cleanly on the next load.
+        _purge_new_repo_modules(before_modules, ref.repo_path)
 
 
 # ---------------------------------------------------------------------------
