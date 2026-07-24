@@ -308,7 +308,35 @@ docker compose -f deploy/docker-compose.yml up --build
 
 Build with `--build-arg PREINSTALL_PLUGIN_REQUIRES=true` to bake plugin deps in.
 
-## AWS deployment (ECS Fargate + Terraform)
+## AWS deployment
+
+Two paths, depending on scale (cost/complexity trade-off in
+[`docs/deployment-comparison.md`](docs/deployment-comparison.md)):
+
+- **Minimal, single EC2 box** (`deploy/ec2/`) — cheapest, fewest moving parts;
+  a good fit for the initial deployment. See below.
+- **ECS Fargate + Terraform** (`deploy/terraform/`) — HA, managed runtime, scales
+  past one instance; for production once traffic grows.
+
+Because Pulse abstracts state (SQLite ↔ DynamoDB via `PULSE_STORE_BACKEND`),
+moving from the first to the second is a config change plus an apply.
+
+### Minimal (single EC2)
+
+`deploy/ec2/` runs the whole service as one Docker container on a small
+`t4g.small`, with SQLite state on the instance disk — no load balancer, no
+registry (the image is built on the box from shipped source).
+
+```bash
+KEY_NAME=my-keypair ./deploy/ec2/launch.sh            # provision the box (optional)
+HOST=<public-ip> SSH_KEY=~/.ssh/my-keypair.pem \
+  ./deploy/ec2/deploy.sh                              # build + run under systemd
+```
+
+Re-run `deploy.sh` to update in place; state under `/var/lib/pulse` is preserved.
+Full options in [`deploy/ec2/README.md`](deploy/ec2/README.md).
+
+### ECS Fargate + Terraform
 
 `deploy/terraform/` provisions ECR, a DynamoDB state table, an ECS Fargate
 service behind an ALB, CloudWatch logs, and IAM roles (uses the default VPC
@@ -327,7 +355,7 @@ docker build -f ../Dockerfile -t "$ECR:latest" ../..
 docker push "$ECR:latest"
 terraform apply                                # rolls out the service
 
-curl "http://$(terraform output -raw alb_dns_name)/health"
+curl "http://$(terraform output -raw alb_dns_name)/api/health"
 ```
 
 The state store is DynamoDB and the in-app scheduler refreshes on an interval.
@@ -357,7 +385,7 @@ src/biothings_pulse/
   scheduler.py      periodic refresh
   api/              FastAPI routes + schemas
   main.py           app factory + lifespan
-deploy/             Dockerfile, docker-compose, Terraform
+deploy/             Dockerfile, docker-compose, ec2/ (minimal), terraform/ (Fargate)
 ```
 
 See `INSTRUCTIONS.md` for the original project brief.
