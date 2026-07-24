@@ -41,13 +41,27 @@ Skip this step if you already have an Amazon Linux 2023 (or Debian/Ubuntu) host.
 
 ### 2. Build + deploy the app
 
+Two ways — pick whichever fits how you provisioned the box.
+
+**A) On the box (you SSH in yourself).** Run the self-contained bootstrap; it
+clones this repo, builds the image, and starts the systemd service:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/biothings/biothings_pulse/main/deploy/ec2/bootstrap.sh -o /tmp/pulse-setup.sh
+bash /tmp/pulse-setup.sh
+# with admin enabled + a custom port/branch:
+#   ADMIN_TOKEN='a-strong-secret' HTTP_PORT=80 PULSE_REF=main bash /tmp/pulse-setup.sh
+```
+
+**B) From your laptop (push-style).** Drives the box over SSH — ships local
+source (no GitHub fetch), builds on the host, installs the unit:
+
 ```bash
 HOST=<public-ip> SSH_KEY=~/.ssh/my-keypair.pem ./deploy/ec2/deploy.sh
 ```
 
-This ships the source, builds the image on the host, installs the systemd unit,
-starts it, and waits for `GET /api/health` to pass. Re-run it any time to deploy
-an update in place — state in `/var/lib/pulse` is preserved.
+Either way, re-run to deploy an update in place — state in `/var/lib/pulse` is
+preserved.
 
 To enable admin/mutating operations, pass a secret (otherwise the API is
 read-only):
