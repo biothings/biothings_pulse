@@ -26,3 +26,7 @@ deploy/terraform/terraform.tfvars
 
 # OS / editor
 .DS_Store
+
+# Local-only notes (kept out of git; synced across machines via Dropbox)
+*.local.md
+.venv-ft/

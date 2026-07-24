@@ -64,23 +64,25 @@ persisted to the state store (SQLite locally, DynamoDB on AWS).
 
 ## How often it refreshes
 
-Checks are cheap (a few HTTP `HEAD`s, no downloads), but Pulse still avoids
-hammering upstream servers by caching results and refreshing on three triggers:
+Checks are cheap (a few HTTP `HEAD`s, no downloads). Reads never trigger a check,
+so consumers can poll freely; checks happen only via the scheduler or explicitly.
 
-- **On demand.** `GET /sources/{repo}/{plugin}` returns the cached status, and
-  re-checks transparently only if there is no result yet or the cached one is
-  **older than `PULSE_CHECK_TTL`** (default **3600 s / 1 h**).
-  `POST /sources/{repo}/{plugin}/check` always forces an immediate fresh check,
-  ignoring the cache.
-- **On a schedule.** When `PULSE_SCHEDULER_ENABLED=true` (the default), an
-  in-process scheduler sweeps **every source** every `PULSE_SCHEDULER_INTERVAL`
-  seconds (default **86400 s / daily**, which is enough for most data sources).
-  `POST /admin/refresh` runs that sweep
-  on demand.
+- **Per-plugin schedule, else default.** A plugin may declare its own check
+  schedule — a cron string in the manifest `dumper.schedule` or an advanced
+  dumper's `SCHEDULE`. Pulse honors it. Sources without one are checked every
+  `PULSE_SCHEDULER_INTERVAL` seconds (default **86400 s / daily**).
+- **The scheduler is due-based.** When `PULSE_SCHEDULER_ENABLED=true` (default),
+  it wakes every `PULSE_SCHEDULER_TICK` seconds (default **3600 s / hourly**) and
+  checks only the sources that are *due* per their schedule. A never-checked
+  source is always due, so a fresh deployment fills in on the first tick; a warm
+  store (state persists) only re-checks what's actually due.
+- **On demand.** `GET /sources/{repo}/{plugin}` returns the cached status without
+  checking. `POST /sources/{repo}/{plugin}/check` forces one source now;
+  `POST /admin/refresh` force-checks every source.
 - **On startup.** If `PULSE_SYNC_ON_STARTUP=true` (default), Pulse git-syncs the
-  repos and rediscovers plugins in the background as it boots.
+  repos, rediscovers plugins, and runs the due-check once in the background.
 
-Tune the cadence with `PULSE_SCHEDULER_INTERVAL` and `PULSE_CHECK_TTL`. For a
+Each source's `next_check_at` (in the API/dashboard) reflects its schedule. For a
 multi-instance deployment, set `PULSE_SCHEDULER_ENABLED=false` and drive
 `POST /admin/refresh` centrally (e.g. AWS EventBridge Scheduler) so only one
 sweep runs at a time.
@@ -161,7 +163,9 @@ Example response:
   "download_urls": ["http://purl.obolibrary.org/obo/chebi.obo"],
   "status": "ok",
   "error": null,
-  "checked_at": "2026-07-23T22:05:25Z"
+  "schedule": "0 1 * * 0",
+  "checked_at": "2026-07-23T22:05:25Z",
+  "next_check_at": "2026-07-26T01:00:00Z"
 }
 ```
 
@@ -181,10 +185,10 @@ All settings are env vars prefixed `PULSE_` (see `src/biothings_pulse/config.py`
 | `PULSE_DYNAMODB_TABLE` | `biothings-pulse-state` | DynamoDB table |
 | `PULSE_DYNAMODB_ENDPOINT_URL` | – | e.g. `http://localhost:8000` for dynamodb-local |
 | `PULSE_CHECK_TIMEOUT` | `60` | Per-check timeout (s) |
-| `PULSE_CHECK_TTL` | `3600` | Cached result freshness (s) |
-| `PULSE_SCHEDULER_ENABLED` | `true` | In-app periodic refresh |
-| `PULSE_SCHEDULER_INTERVAL` | `86400` | Refresh interval (s, default daily) |
-| `PULSE_SYNC_ON_STARTUP` | `true` | Sync + discover at boot |
+| `PULSE_SCHEDULER_ENABLED` | `true` | In-app due-based scheduler |
+| `PULSE_SCHEDULER_INTERVAL` | `86400` | Default per-source cadence (s) when a plugin has no schedule |
+| `PULSE_SCHEDULER_TICK` | `3600` | How often the scheduler evaluates due-ness (s) |
+| `PULSE_SYNC_ON_STARTUP` | `true` | Sync + discover + initial due-check at boot |
 | `PULSE_MAX_CHECK_WORKERS` | `8` | Check threadpool size |
 
 ### Adding a new repo of plugins
