@@ -121,7 +121,8 @@
   tbody tr { transition: background .1s; }
   tbody tr:hover { background: var(--hover); }
   tr:last-child td { border-bottom: none; }
-  td.src { font-weight: 500; display: flex; align-items: center; justify-content: space-between; gap: 18px; }
+  td.src { font-weight: 500; }
+  .src-inner { display: flex; align-items: center; justify-content: space-between; gap: 18px; }
   td.src a.src-link { color: var(--ink); }
   td.src a.src-link:hover { color: var(--accent); text-decoration: none; }
   td.src a.src-link:hover .repo { color: var(--accent); }
@@ -350,14 +351,14 @@ function renderRows() {
       ? `${ver(d.last_version)}<div class="sub">${agoText(d.last_version_at)}</div>`
       : '<span class="faint">—</span>';
     return `<tr class="${changed ? 'changed' : ''}">
-      <td class="src">
+      <td class="src"><div class="src-inner">
         <a class="src-link" href="${jsonUrl}" target="_blank" rel="noopener" title="View this source's JSON"><span class="repo">${esc(d.repo)}/</span>${esc(d.plugin)}</a>
         <span class="src-icons">
           <span class="type-ic" title="${esc(d.plugin_type)} plugin">${typeIcon(d.plugin_type)}</span>
           ${d.source_url ? `<a href="${esc(d.source_url)}" target="_blank" rel="noopener" title="View source code">${CODE_SVG}</a>` : ''}
           <button class="admin-only" data-act="check" data-repo="${esc(d.repo)}" data-plugin="${esc(d.plugin)}" title="Re-check now (admin)">${RECHECK_SVG}</button>
         </span>
-      </td>
+      </div></td>
       <td><span class="st"><span class="dot d-${esc(d.status)}"></span>${esc(d.status)}</span>${errCell}</td>
       <td>${ver(d.current_version)} ${changed ? '<span class="upd">NEW</span>' : ''}${curSeen}</td>
       <td>${prevCell}</td>
