@@ -13,7 +13,9 @@ class PluginRef(BaseModel):
 
     ``path`` is the plugin directory. For manifest plugins ``manifest_path``
     points at the ``manifest.json``. For advanced plugins ``path`` is the source
-    package directory under ``hub/dataload/sources/``.
+    package directory under ``hub/dataload/sources/``. ``repo_path`` is the repo
+    checkout root (used to resolve shared modules a manifest ``release`` function
+    may live in, e.g. ``hub.dataload.metadata_parser``).
     """
 
     model_config = {"arbitrary_types_allowed": True}
@@ -23,6 +25,7 @@ class PluginRef(BaseModel):
     plugin_type: str  # "manifest" | "advanced"
     path: Path
     manifest_path: Optional[Path] = None
+    repo_path: Optional[Path] = None
 
     @property
     def key(self) -> str:

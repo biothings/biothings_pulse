@@ -1,0 +1,10 @@
+{
+  "version": "0.2",
+  "__metadata__": {
+    "version": "2024-shared"
+  },
+  "dumper": {
+    "data_url": "http://example.com/shared.tsv",
+    "release": "hub.dataload.shared_release:get_release"
+  }
+}

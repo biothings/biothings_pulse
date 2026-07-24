@@ -62,6 +62,7 @@ def discover_plugins(
                     plugin_type="manifest",
                     path=plugin_dir,
                     manifest_path=mpath,
+                    repo_path=repo_path,
                 )
             )
 
@@ -82,6 +83,7 @@ def discover_plugins(
                     name=spath.name,
                     plugin_type="advanced",
                     path=spath,
+                    repo_path=repo_path,
                 )
             )
 

@@ -50,8 +50,28 @@ def _load_manifest(ref: PluginRef) -> dict:
         raise LoaderError(f"Cannot parse manifest.json: {exc}") from exc
 
 
-def _import_release_func(plugin_dir: Path, mod_spec: str) -> Callable:
-    """Import ``module:func`` from the plugin directory (mirrors the SDK)."""
+def _repo_sys_path_entries(repo_path):
+    """Dirs to add to sys.path so a repo's shared ``hub.*`` modules import.
+
+    A manifest ``release`` may point at a shared module (e.g.
+    ``hub.dataload.metadata_parser``) living at the repo root or under ``src/``.
+    """
+    if repo_path is None:
+        return []
+    repo_path = Path(repo_path)
+    entries = [repo_path, repo_path / "src"]
+    return [e for e in entries if e.is_dir()]
+
+
+def _import_release_func(plugin_dir: Path, mod_spec: str, repo_path=None) -> Callable:
+    """Import ``module:func`` for a manifest release function.
+
+    A local ``module.py`` in the plugin dir is loaded by file. Otherwise the spec
+    is a dotted, possibly *shared* module (e.g. ``hub.dataload.metadata_parser``);
+    we put the repo root (and ``src/``) on sys.path so it resolves, then purge the
+    freshly-imported shared top-level package so a different repo's same-named
+    package (e.g. another ``hub``) imports cleanly next time.
+    """
     try:
         module, funcname = (s.strip() for s in mod_spec.split(":"))
     except ValueError as exc:
@@ -60,12 +80,14 @@ def _import_release_func(plugin_dir: Path, mod_spec: str) -> Callable:
         ) from exc
 
     module_file = plugin_dir / f"{module}.py"
-    added_path = False
+    added_paths: List[str] = []
+    purge_top = None
+    before_modules: set = set()
     try:
         if module_file.exists():
             if str(plugin_dir) not in sys.path:
                 sys.path.insert(0, str(plugin_dir))
-                added_path = True
+                added_paths.append(str(plugin_dir))
             unique = f"pulse_plugin_{plugin_dir.name}_{module}"
             spec = importlib.util.spec_from_file_location(unique, module_file)
             if spec is None or spec.loader is None:
@@ -73,14 +95,27 @@ def _import_release_func(plugin_dir: Path, mod_spec: str) -> Callable:
             mod = importlib.util.module_from_spec(spec)
             spec.loader.exec_module(mod)
         else:
+            for entry in _repo_sys_path_entries(repo_path):
+                if str(entry) not in sys.path:
+                    sys.path.insert(0, str(entry))
+                    added_paths.append(str(entry))
+            purge_top = module.split(".")[0]
+            before_modules = set(sys.modules)
             mod = importlib.import_module(module)
         func = getattr(mod, funcname, None)
         if func is None:
             raise LoaderError(f"Function {funcname!r} not found in {module!r}")
         return func
     finally:
-        if added_path:
-            sys.path.remove(str(plugin_dir))
+        for p in added_paths:
+            try:
+                sys.path.remove(p)
+            except ValueError:
+                pass
+        if purge_top:
+            for name in set(sys.modules) - before_modules:
+                if name == purge_top or name.startswith(purge_top + "."):
+                    sys.modules.pop(name, None)
 
 
 _SCHEME_BASES = {"http": "http", "https": "http", "ftp": "ftp"}
@@ -127,12 +162,15 @@ def build_manifest_dumper(ref: PluginRef, work_dir: Path):
         # Honor a manifest-declared check schedule (cron); None -> Pulse default.
         "SCHEDULE": section.get("schedule"),
         "UNCOMPRESS": section.get("uncompress", False),
+        # The SDK loader exposes the manifest's __metadata__ on the dumper class;
+        # some release functions read it (e.g. DogPark's get_kgx_release).
+        "__metadata__": manifest.get("__metadata__") or {},
     }
 
     # Optional custom release function -> set_release method.
     release_spec = section.get("release")
     if release_spec:
-        release_func = _import_release_func(Path(ref.path), release_spec)
+        release_func = _import_release_func(Path(ref.path), release_spec, ref.repo_path)
 
         def set_release(self, _func=release_func):
             self.release = _func(self)

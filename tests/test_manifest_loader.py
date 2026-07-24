@@ -37,6 +37,24 @@ def test_manifest_without_release_func(fixture_repo, tmp_path):
     assert dumper.SRC_NAME == "basic"
 
 
+def test_release_from_shared_repo_module(fixture_repo, tmp_path):
+    # release = "hub.dataload.shared_release:get_release" lives at the repo root,
+    # not in the plugin dir, and reads the manifest __metadata__ (DogPark-style).
+    plugin_dir = fixture_repo / "plugins" / "shared"
+    ref = PluginRef(
+        repo="testrepo",
+        name="shared",
+        plugin_type="manifest",
+        path=plugin_dir,
+        manifest_path=plugin_dir / "manifest.json",
+        repo_path=fixture_repo,
+    )
+    dumper = build_manifest_dumper(ref, tmp_path)
+    assert type(dumper).__metadata__ == {"version": "2024-shared"}
+    dumper.set_release()
+    assert dumper.release == "2024-shared"
+
+
 def test_upload_only_is_unsupported(fixture_repo, tmp_path):
     with pytest.raises(UnsupportedPlugin):
         build_manifest_dumper(_ref(fixture_repo, "uploadonly"), tmp_path)
