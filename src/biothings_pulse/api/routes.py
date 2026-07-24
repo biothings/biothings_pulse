@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import FileResponse
 
 from .. import __version__
+from ..scheduling import next_check_at
 from ..service import PulseService
 from ..store.base import SourceState
 from .models import (
@@ -26,6 +27,16 @@ _DASHBOARD_FILE = Path(__file__).resolve().parent.parent / "static" / "dashboard
 
 def get_service(request: Request) -> PulseService:
     return request.app.state.service
+
+
+def _status(svc: PulseService, state: SourceState) -> SourceStatus:
+    """Build the response, filling next_check_at from the schedule."""
+    st = SourceStatus.from_state(state)
+    if state.checked_at is not None:
+        st.next_check_at = next_check_at(
+            state.schedule, state.checked_at, svc.settings.scheduler_interval
+        )
+    return st
 
 
 @router.get("/", include_in_schema=False)
@@ -49,7 +60,7 @@ def list_sources(svc: PulseService = Depends(get_service)) -> SourcesResponse:
         state = svc.store.get(ref.repo, ref.name) or SourceState(
             repo=ref.repo, plugin=ref.name, plugin_type=ref.plugin_type
         )
-        statuses.append(SourceStatus.from_state(state))
+        statuses.append(_status(svc, state))
     return SourcesResponse(count=len(statuses), sources=statuses)
 
 
@@ -78,7 +89,7 @@ def get_source(
     state = svc.check_source(repo, plugin) if refresh else svc.get_status(repo, plugin)
     if state is None:
         raise HTTPException(status_code=404, detail=f"Unknown source {repo}/{plugin}")
-    return SourceStatus.from_state(state)
+    return _status(svc, state)
 
 
 @router.post(
@@ -90,7 +101,7 @@ def check_source(
     state = svc.check_source(repo, plugin)
     if state is None:
         raise HTTPException(status_code=404, detail=f"Unknown source {repo}/{plugin}")
-    return SourceStatus.from_state(state)
+    return _status(svc, state)
 
 
 @router.post("/admin/sync", response_model=MessageResponse, tags=["admin"])

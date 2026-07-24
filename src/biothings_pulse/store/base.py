@@ -36,6 +36,9 @@ class SourceState(BaseModel):
     last_version_at: Optional[datetime] = None
     download_urls: List[str] = Field(default_factory=list)
 
+    schedule: Optional[str] = None
+    """The plugin's own check schedule (cron). None -> Pulse default interval."""
+
     status: str = "pending"  # "pending" | "ok" | "error" | "unsupported"
     error: Optional[str] = None
 
@@ -45,12 +48,6 @@ class SourceState(BaseModel):
     @property
     def key(self) -> str:
         return f"{self.repo}/{self.plugin}"
-
-    def is_stale(self, ttl_seconds: float) -> bool:
-        if self.checked_at is None:
-            return True
-        age = (_now() - self.checked_at).total_seconds()
-        return age > ttl_seconds
 
 
 class StateStore(abc.ABC):
@@ -80,6 +77,7 @@ class StateStore(abc.ABC):
         download_urls: Optional[List[str]] = None,
         status: str = "ok",
         error: Optional[str] = None,
+        schedule: Optional[str] = None,
     ) -> SourceState:
         """Persist the outcome of a check and return the updated state.
 
@@ -99,6 +97,11 @@ class StateStore(abc.ABC):
         state.error = error
         state.updated_at = now
         state.checked_at = now  # every attempt, success or failure
+
+        # Only trust the schedule when the plugin actually loaded (ok/unsupported);
+        # a transient error shouldn't wipe a previously-known schedule.
+        if status in ("ok", "unsupported"):
+            state.schedule = schedule
 
         if status == "ok":
             state.download_urls = download_urls or []

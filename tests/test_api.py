@@ -15,6 +15,7 @@ def client(tmp_path, monkeypatch):
             status="ok",
             latest_version="2024-10",
             download_urls=["http://example.com/f.tsv"],
+            schedule="0 2 * * 0",
         )
 
     monkeypatch.setattr("biothings_pulse.service.check_plugin", fake_check)
@@ -65,6 +66,8 @@ def test_check_records_current_version(client):
     assert body["current_version_at"] is not None
     assert body["last_version"] is None
     assert body["download_urls"] == ["http://example.com/f.tsv"]
+    assert body["schedule"] == "0 2 * * 0"
+    assert body["next_check_at"] is not None  # computed from schedule + checked_at
     assert "has_update" not in body  # Pulse no longer owns update state
 
     # A cached read returns the same, without re-checking.
@@ -92,3 +95,11 @@ def test_refresh_all(client):
     resp = client.post("/admin/refresh")
     assert resp.status_code == 200
     assert resp.json()["count"] == 1
+
+
+def test_run_due_checks_respects_schedule(client):
+    svc = client.app.state.service
+    # Never checked -> due -> checked once.
+    assert svc.run_due_checks() == 1
+    # fake_check reports a weekly cron; just-checked source isn't due again now.
+    assert svc.run_due_checks() == 0

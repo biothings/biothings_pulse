@@ -93,9 +93,6 @@ class Settings(BaseSettings):
     check_timeout: float = 60.0
     """Per-source check timeout, in seconds."""
 
-    check_ttl: float = 3600.0
-    """A cached check result older than this (seconds) is considered stale."""
-
     max_check_workers: int = 8
     """Size of the threadpool that runs (blocking) plugin checks."""
 
@@ -105,7 +102,12 @@ class Settings(BaseSettings):
     # --- Scheduler -------------------------------------------------------
     scheduler_enabled: bool = True
     scheduler_interval: float = 86400.0
-    """Seconds between background refresh sweeps of all sources (default: daily)."""
+    """Default per-source check cadence (seconds) for sources without their own
+    schedule (default: daily)."""
+
+    scheduler_tick: float = 3600.0
+    """How often the scheduler wakes to check which sources are due (seconds).
+    Should be <= the finest plugin cron granularity you care about (default: hourly)."""
 
     # --- State store -----------------------------------------------------
     store_backend: str = "sqlite"

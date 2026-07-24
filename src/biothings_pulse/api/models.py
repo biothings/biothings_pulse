@@ -38,8 +38,14 @@ class SourceStatus(BaseModel):
     )
     status: str = Field(description="ok | error | unsupported | pending")
     error: Optional[str] = None
+    schedule: Optional[str] = Field(
+        None, description="Plugin's own check schedule (cron); null = Pulse default."
+    )
     checked_at: Optional[datetime] = Field(
         None, description="When this source was last checked."
+    )
+    next_check_at: Optional[datetime] = Field(
+        None, description="When the next scheduled check is due."
     )
     updated_at: Optional[datetime] = None
 
@@ -56,6 +62,7 @@ class SourceStatus(BaseModel):
             download_urls=state.download_urls,
             status=state.status,
             error=state.error,
+            schedule=state.schedule,
             checked_at=state.checked_at,
             updated_at=state.updated_at,
         )

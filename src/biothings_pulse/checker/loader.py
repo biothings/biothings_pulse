@@ -124,7 +124,8 @@ def build_manifest_dumper(ref: PluginRef, work_dir: Path):
         "SRC_NAME": ref.name,
         "SRC_ROOT_FOLDER": str(Path(work_dir) / ref.name),
         "SRC_URLS": urls,
-        "SCHEDULE": None,
+        # Honor a manifest-declared check schedule (cron); None -> Pulse default.
+        "SCHEDULE": section.get("schedule"),
         "UNCOMPRESS": section.get("uncompress", False),
     }
 

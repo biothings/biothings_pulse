@@ -49,6 +49,19 @@ def test_error_preserves_current_but_records_attempt(tmp_path):
     assert st.checked_at is not None  # attempt time recorded even on failure
 
 
+def test_schedule_recorded_and_kept_on_error(tmp_path):
+    store = make_store(tmp_path)
+    st = store.record_check(
+        "r", "s", "manifest", detected_version="1", schedule="0 2 * * 0"
+    )
+    assert st.schedule == "0 2 * * 0"
+    # A later error keeps the previously-known schedule.
+    st2 = store.record_check(
+        "r", "s", "manifest", detected_version=None, status="error", error="x"
+    )
+    assert st2.schedule == "0 2 * * 0"
+
+
 def test_list_all_and_persistence(tmp_path):
     store = make_store(tmp_path)
     store.record_check("r", "a", "manifest", detected_version="1")

@@ -18,6 +18,7 @@ from .config import Settings
 from .plugins.discovery import discover_plugins
 from .plugins.models import PluginRef
 from .plugins.sync import sync_registry
+from .scheduling import is_due
 from .store import StateStore, make_store
 from .store.base import SourceState
 
@@ -61,35 +62,45 @@ class PulseService:
 
     # -- checking ---------------------------------------------------------
 
-    def _run_check(self, ref: PluginRef) -> CheckResult:
-        """Run one check in the threadpool, bounded by the configured timeout."""
-        future = self._executor.submit(check_plugin, ref, self.settings)
-        try:
-            return future.result(timeout=self.settings.check_timeout)
-        except FutureTimeout:
-            # NOTE: the worker thread may still be running; it is bounded by the
-            # pool size. A future improvement is subprocess isolation with hard
-            # cancellation.
-            return CheckResult(
-                status="error",
-                error=f"check timed out after {self.settings.check_timeout}s",
-            )
+    def _record(self, ref: PluginRef, result: CheckResult) -> SourceState:
+        return self.store.record_check(
+            ref.repo,
+            ref.name,
+            ref.plugin_type,
+            detected_version=result.latest_version,
+            download_urls=result.download_urls,
+            status=result.status,
+            error=result.error,
+            schedule=result.schedule,
+        )
+
+    def _check_refs(self, refs: List[PluginRef]) -> int:
+        """Check the given refs concurrently and persist each result."""
+        futures = {
+            r.key: self._executor.submit(check_plugin, r, self.settings) for r in refs
+        }
+        for ref in refs:
+            try:
+                result = futures[ref.key].result(timeout=self.settings.check_timeout)
+            except FutureTimeout:
+                result = CheckResult(status="error", error="check timed out")
+            self._record(ref, result)
+        return len(refs)
 
     def check_source(self, repo: str, plugin: str) -> Optional[SourceState]:
         """Force a fresh check and persist the outcome. None if unknown source."""
         ref = self.get_ref(repo, plugin)
         if ref is None:
             return None
-        result = self._run_check(ref)
-        return self.store.record_check(
-            repo,
-            plugin,
-            ref.plugin_type,
-            detected_version=result.latest_version,
-            download_urls=result.download_urls,
-            status=result.status,
-            error=result.error,
-        )
+        future = self._executor.submit(check_plugin, ref, self.settings)
+        try:
+            result = future.result(timeout=self.settings.check_timeout)
+        except FutureTimeout:
+            result = CheckResult(
+                status="error",
+                error=f"check timed out after {self.settings.check_timeout}s",
+            )
+        return self._record(ref, result)
 
     def get_status(self, repo: str, plugin: str) -> Optional[SourceState]:
         """Return the cached status (or a 'pending' placeholder) without checking.
@@ -106,29 +117,29 @@ class PulseService:
         )
 
     def refresh_all(self) -> int:
-        """Check every catalogued source; persist results. Returns #checked."""
-        refs = self.list_catalog()
-        futures = {
-            r.key: self._executor.submit(check_plugin, r, self.settings) for r in refs
-        }
-        checked = 0
-        for ref in refs:
-            try:
-                result = futures[ref.key].result(timeout=self.settings.check_timeout)
-            except FutureTimeout:
-                result = CheckResult(status="error", error="check timed out")
-            self.store.record_check(
-                ref.repo,
-                ref.name,
-                ref.plugin_type,
-                detected_version=result.latest_version,
-                download_urls=result.download_urls,
-                status=result.status,
-                error=result.error,
-            )
-            checked += 1
-        logger.info("Refreshed %d sources", checked)
-        return checked
+        """Force-check every catalogued source. Returns #checked."""
+        n = self._check_refs(self.list_catalog())
+        logger.info("Refreshed all %d sources", n)
+        return n
+
+    def run_due_checks(self) -> int:
+        """Check only sources whose schedule is due, then persist. Returns #checked.
+
+        A source uses its own declared cron schedule when it has one, otherwise
+        the Pulse default interval. Never-checked sources are always due (this is
+        what populates a fresh deployment).
+        """
+        due = [ref for ref in self.list_catalog() if self._is_due(ref)]
+        if due:
+            self._check_refs(due)
+        logger.info("Due-check: %d of %d sources due", len(due), len(self._catalog))
+        return len(due)
+
+    def _is_due(self, ref: PluginRef) -> bool:
+        state = self.store.get(ref.repo, ref.name)
+        last = state.checked_at if state else None
+        schedule = state.schedule if state else None
+        return is_due(schedule, last, self.settings.scheduler_interval)
 
     def close(self) -> None:
         self._executor.shutdown(wait=False, cancel_futures=True)

@@ -21,6 +21,9 @@ logger = logging.getLogger(__name__)
 def _initial_sync(service: PulseService) -> None:
     try:
         service.sync_and_discover()
+        # Populate/refresh due sources once at startup (never-checked -> due, so a
+        # fresh deployment fills in; a warm store only re-checks what's actually due).
+        service.run_due_checks()
     except Exception:  # noqa: BLE001
         logger.exception("Initial sync/discovery failed")
 

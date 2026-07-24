@@ -49,6 +49,7 @@ def _ensure_release(dumper) -> None:
 
 def run_dumper_check(dumper) -> CheckResult:
     """Drive an already-instantiated dumper through release detection."""
+    schedule = getattr(type(dumper), "SCHEDULE", None) or None
     try:
         _run_create_todump(dumper)
         _ensure_release(dumper)
@@ -59,21 +60,26 @@ def run_dumper_check(dumper) -> CheckResult:
             return CheckResult(
                 status="unsupported",
                 error="no remote version detected (manual/derived source?)",
+                schedule=schedule,
             )
         return CheckResult(
             status="ok",
             latest_version=str(latest) if latest is not None else None,
             download_urls=urls,
+            schedule=schedule,
         )
     except NotImplementedError:
         # The dumper doesn't implement release detection (e.g. ManualDumper).
         return CheckResult(
             status="unsupported",
             error="dumper does not implement release detection (manual/derived source)",
+            schedule=schedule,
         )
     except Exception as exc:  # noqa: BLE001
         logger.warning("check failed for %s: %s", getattr(dumper, "src_name", "?"), exc)
-        return CheckResult(status="error", error=f"{type(exc).__name__}: {exc}")
+        return CheckResult(
+            status="error", error=f"{type(exc).__name__}: {exc}", schedule=schedule
+        )
     finally:
         _release_client(dumper)
 

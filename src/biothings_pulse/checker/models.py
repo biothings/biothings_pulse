@@ -20,3 +20,4 @@ class CheckResult:
     latest_version: Optional[str] = None
     download_urls: List[str] = field(default_factory=list)
     error: Optional[str] = None
+    schedule: Optional[str] = None  # plugin's declared check schedule (cron), if any
