@@ -7,7 +7,6 @@ import threading
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
-from fastapi.responses import RedirectResponse
 
 from . import __version__
 from .api.routes import router
@@ -71,12 +70,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         lifespan=lifespan,
     )
     app.state.settings = settings
-    app.include_router(router)
-
-    @app.get("/", include_in_schema=False)
-    def _root() -> RedirectResponse:
-        return RedirectResponse(url="/docs")
-
+    app.include_router(router)  # serves the dashboard at "/"
     return app
 
 

@@ -55,7 +55,7 @@ Documentation = "https://docs.biothings.io"
 where = ["src"]
 
 [tool.setuptools.package-data]
-biothings_pulse = ["data/*.yaml", "data/*.yml"]
+biothings_pulse = ["data/*.yaml", "data/*.yml", "static/*.html"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

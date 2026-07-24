@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi.responses import FileResponse
 
 from .. import __version__
 from ..service import PulseService
@@ -18,9 +21,17 @@ from .models import (
 
 router = APIRouter()
 
+_DASHBOARD_FILE = Path(__file__).resolve().parent.parent / "static" / "dashboard.html"
+
 
 def get_service(request: Request) -> PulseService:
     return request.app.state.service
+
+
+@router.get("/", include_in_schema=False)
+def dashboard() -> FileResponse:
+    """Serve the Pulse dashboard landing page (reads /sources via JS)."""
+    return FileResponse(_DASHBOARD_FILE, media_type="text/html")
 
 
 @router.get("/health", response_model=HealthResponse, tags=["meta"])

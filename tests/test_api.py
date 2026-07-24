@@ -48,6 +48,15 @@ def test_catalog(client):
     assert resp.json()["sources"][0]["plugin"] == "mysrc"
 
 
+def test_dashboard_landing_page(client):
+    resp = client.get("/")
+    assert resp.status_code == 200
+    assert resp.headers["content-type"].startswith("text/html")
+    body = resp.text
+    assert "BioThings Pulse" in body
+    assert 'href="/docs"' in body  # links to the API docs
+
+
 def test_check_then_status_and_acknowledge(client):
     # Force a check -> baseline set, no update.
     resp = client.post("/sources/myrepo/mysrc/check")
