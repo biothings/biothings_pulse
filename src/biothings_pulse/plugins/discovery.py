@@ -73,6 +73,11 @@ def discover_plugins(
     manifest_names: set[str] = set()
     refs: List[PluginRef] = []
 
+    # Repo-configured extra sys.path dirs (resolved to existing absolute dirs).
+    extra_sys_path = [
+        d for p in spec.sys_path if (d := (repo_path / p)).is_dir()
+    ]
+
     # --- manifest-based plugins -----------------------------------------
     for pattern in spec.manifest_globs:
         for mpath in sorted(repo_path.glob(pattern)):
@@ -93,6 +98,7 @@ def discover_plugins(
                     manifest_path=mpath,
                     repo_path=repo_path,
                     source_url=_source_url(spec, repo_path, plugin_dir),
+                    extra_sys_path=extra_sys_path,
                 )
             )
 
@@ -115,6 +121,7 @@ def discover_plugins(
                     path=spath,
                     repo_path=repo_path,
                     source_url=_source_url(spec, repo_path, spath),
+                    extra_sys_path=extra_sys_path,
                 )
             )
 

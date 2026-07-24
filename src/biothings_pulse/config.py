@@ -37,6 +37,17 @@ class RepoSpec(BaseModel):
     submodule paths under those prefixes (e.g. ``["plugins"]`` skips large
     top-level hub mirrors); ``False`` = none."""
 
+    requirements: List[str] = Field(default_factory=list)
+    """Extra pip packages this repo's plugins need at check time (e.g. ``lxml``).
+    Pre-installed at build/sync time by ``scripts/install_plugin_requires.py``."""
+    requirements_files: List[str] = Field(default_factory=list)
+    """Repo-relative requirements file(s) to pre-install (e.g.
+    ``requirements_hub.txt``) — an alternative to listing packages inline."""
+    sys_path: List[str] = Field(default_factory=list)
+    """Repo-relative dirs added to ``sys.path`` while checking this repo's plugins
+    (escape hatch for non-standard layouts; the conventional ``src``/``hub`` roots
+    are already handled automatically)."""
+
 
 class Registry(BaseModel):
     """The full set of monitored repositories plus default glob patterns."""

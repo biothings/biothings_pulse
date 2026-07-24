@@ -7,9 +7,9 @@ install anything at request time.
 Requirements come from three places:
   * manifest ``requires`` (manifest plugins);
   * a ``requirements*.txt`` next to an advanced plugin;
-  * the repo-root ``requirements_hub.txt`` — where the BioThings hubs actually
-    declare hub-side deps like ``lxml``/``pandas``/``bitarray`` that advanced
-    dumpers import.
+  * repo-level config in the registry — each repo's ``requirements`` (inline
+    packages) and ``requirements_files`` (repo-relative files), e.g. to declare
+    the ``lxml``/``pandas``/``bitarray`` that some hubs' dumpers import.
 """
 
 from __future__ import annotations
@@ -18,8 +18,9 @@ import json
 import logging
 from collections.abc import Iterable
 from pathlib import Path
-from typing import List, Set
+from typing import Dict, List, Set
 
+from ..config import RepoSpec
 from .models import PluginRef
 
 logger = logging.getLogger(__name__)
@@ -29,7 +30,6 @@ logger = logging.getLogger(__name__)
 _SKIP_PREFIXES = ("biothings",)
 
 _PLUGIN_REQ_FILES = ("requirements.txt", "requirements-hub.txt", "requirements_hub.txt")
-_REPO_REQ_FILES = ("requirements_hub.txt", "requirements-hub.txt")
 
 
 def _parse_req_file(path: Path) -> List[str]:
@@ -86,9 +86,24 @@ def collect_requirements(refs: Iterable[PluginRef]) -> List[str]:
     return sorted(out)
 
 
-def collect_repo_requirements(repo_paths: Iterable[Path]) -> List[str]:
-    """Hub-side requirements declared at each repo root (``requirements_hub.txt``)."""
+def _clean(reqs: Iterable[str]) -> List[str]:
+    out = []
+    for r in reqs:
+        r = str(r).strip()
+        if r and not r.startswith("-") and not r.lower().startswith(_SKIP_PREFIXES):
+            out.append(r)
+    return out
+
+
+def collect_repo_requirements(
+    repos: Iterable[RepoSpec], paths: Dict[str, Path]
+) -> List[str]:
+    """Repo-declared requirements: each spec's inline ``requirements`` plus any
+    ``requirements_files`` (resolved relative to that repo's checkout)."""
     out: Set[str] = set()
-    for path in repo_paths:
-        out.update(_files_in(Path(path), _REPO_REQ_FILES))
+    for spec in repos:
+        out.update(_clean(spec.requirements))
+        repo_path = paths.get(spec.name)
+        if repo_path is not None:
+            out.update(_files_in(Path(repo_path), spec.requirements_files))
     return sorted(out)

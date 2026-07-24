@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Optional
+from typing import List, Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class PluginRef(BaseModel):
@@ -27,6 +27,7 @@ class PluginRef(BaseModel):
     manifest_path: Optional[Path] = None
     repo_path: Optional[Path] = None
     source_url: Optional[str] = None  # web link to the plugin's source code
+    extra_sys_path: List[Path] = Field(default_factory=list)  # repo-configured sys.path dirs
 
     @property
     def key(self) -> str:

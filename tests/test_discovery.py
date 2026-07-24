@@ -28,6 +28,21 @@ def test_discovers_both_plugin_types(fixture_repo):
     assert by_name["widget"].plugin_type == "advanced"
 
 
+def test_sys_path_resolved_onto_refs(fixture_repo):
+    # A repo-configured sys_path dir (that exists) is attached to each PluginRef.
+    spec = RepoSpec(
+        name="testrepo",
+        git_url="x",
+        manifest_globs=["plugins/*/manifest.json"],
+        advanced_globs=["**/hub/dataload/sources/*"],
+        sys_path=["hub", "does-not-exist"],  # only existing dirs are kept
+    )
+    refs = discover_plugins("testrepo", fixture_repo, spec)
+    assert refs
+    for r in refs:
+        assert r.extra_sys_path == [fixture_repo / "hub"]
+
+
 def test_source_url_github_and_other_hosts():
     gh = RepoSpec(name="r", git_url="https://github.com/biothings/pending.api.git")
     assert (

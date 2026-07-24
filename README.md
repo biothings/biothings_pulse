@@ -236,9 +236,12 @@ entry, and point `PULSE_REGISTRY_FILE` at your copy.
        ref: null                                      # branch/tag/commit; null = default branch
        enabled: true                                  # set false to keep but skip
        submodules: ["plugins"]                        # false | true | list of path prefixes
+       requirements: ["lxml", "pandas"]               # extra pip deps for its plugins
+       # requirements_files: ["requirements_hub.txt"] # or point at a repo file
+       # sys_path: ["src", "lib"]                      # extra dirs added to sys.path
        # Per-repo overrides (optional; fall back to `defaults` above):
-       # manifest_globs: ["plugins/*/manifest.json"]
-       # advanced_globs: ["**/hub/dataload/sources/*", "plugins/*"]
+       # manifest_globs: ["custom/*/manifest.json"]
+       # advanced_globs: ["mypkg/dataload/sources/*"]
    ```
 
    Field reference:
@@ -252,11 +255,20 @@ entry, and point `PULSE_REGISTRY_FILE` at your copy.
      large top-level hub mirrors). Needed for repos like `pending.api` whose
      plugins are submodules.
    - **`manifest_globs` / `advanced_globs`** — where to look for plugins,
-     relative to the repo root. Defaults cover the conventional BioThings layout,
-     so most repos need no override. Manifest plugins are matched by their
-     `manifest.json`; advanced plugins by a source directory containing a
-     `*dump*.py` module. A manifest and an advanced match with the same name →
-     the manifest wins.
+     relative to the repo root (this is how you support a **non-standard plugin
+     folder**). Defaults cover the conventional BioThings layout, so most repos
+     need no override. Manifest plugins are matched by their `manifest.json`;
+     advanced plugins by a source directory containing a `*dump*.py` module. A
+     manifest and an advanced match with the same name → the manifest wins.
+   - **`requirements` / `requirements_files`** — extra pip dependencies this
+     repo's plugins import at check time (inline packages and/or repo-relative
+     requirements files). They're pre-installed at build/sync time by
+     `scripts/install_plugin_requires.py` (or the Docker
+     `--build-arg PREINSTALL_PLUGIN_REQUIRES=true`); Pulse never installs during a
+     check. Per-plugin manifest `requires` are still collected automatically.
+   - **`sys_path`** — repo-relative dirs to add to `sys.path` while checking this
+     repo (escape hatch for odd layouts; the conventional `src/` and `hub/` roots
+     are already handled automatically).
 
 2. **Point Pulse at it and reload the catalog:**
 

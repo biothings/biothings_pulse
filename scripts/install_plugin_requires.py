@@ -54,7 +54,7 @@ def main() -> int:
             refs.extend(discover_plugins(spec.name, path, spec))
 
     requirements = sorted(
-        set(collect_requirements(refs)) | set(collect_repo_requirements(paths.values()))
+        set(collect_requirements(refs)) | set(collect_repo_requirements(repos, paths))
     )
     print(f"# {len(requirements)} plugin/hub requirement(s) discovered:")
     for req in requirements:

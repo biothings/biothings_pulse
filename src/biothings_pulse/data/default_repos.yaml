@@ -3,14 +3,19 @@
 # setting) to support additional hubs or a plugins-only repo.
 #
 # Per-repo fields:
-#   name           unique short name, used as the {repo} path segment in the API
-#   git_url        clone URL (https)
-#   ref            branch/tag/commit to check out (null = the remote default branch)
-#   enabled        set false to keep an entry but skip it
-#   manifest_globs glob(s), relative to the repo root, matching manifest.json files
-#                  for manifest-based plugins
-#   advanced_globs glob(s), relative to the repo root, matching the *directory* of
-#                  each "advanced" plugin (a source package under hub/dataload/sources)
+#   name               unique short name, used as the {repo} path segment in the API
+#   git_url            clone URL (https)
+#   ref                branch/tag/commit to check out (null = the remote default branch)
+#   enabled            set false to keep an entry but skip it
+#   manifest_globs     glob(s), relative to the repo root, matching manifest.json files
+#   advanced_globs     glob(s), relative to the repo root, matching each advanced
+#                      plugin's source directory
+#   requirements       extra pip packages this repo's plugins need at check time
+#                      (pre-installed by scripts/install_plugin_requires.py)
+#   requirements_files repo-relative requirements file(s) to pre-install instead of
+#                      (or in addition to) an inline list, e.g. ["requirements_hub.txt"]
+#   sys_path           repo-relative dirs added to sys.path while checking (escape
+#                      hatch for non-standard layouts; src/ and hub/ are automatic)
 #
 # Globs default (when omitted) to the conventional BioThings layout below.
 
@@ -29,21 +34,26 @@ repos:
   - name: mygene.info
     git_url: https://github.com/biothings/mygene.info.git
     ref: null
+    requirements: [lxml, pandas]   # bs4 parsing (umls), sider/umls parsers
   - name: myvariant.info
     git_url: https://github.com/biothings/myvariant.info.git
     ref: null
+    requirements: [bitarray]       # civic
   - name: mychem.info
     git_url: https://github.com/biothings/mychem.info.git
     ref: null
+    requirements: [lxml, pandas]   # umls/cohd/drugbank/unii (bs4), sider (pandas)
   - name: mydisease.info
     git_url: https://github.com/biothings/mydisease.info.git
     ref: null
+    requirements: [lxml]           # umls
   - name: biothings.species
     git_url: https://github.com/biothings/biothings.species.git
     ref: null
   - name: mygeneset.info
     git_url: https://github.com/biothings/mygeneset.info.git
     ref: null
+    requirements: [lxml]           # msigdb, ctd (bs4 parsing)
   - name: pending.api
     git_url: https://github.com/biothings/pending.api.git
     ref: null
@@ -56,3 +66,4 @@ repos:
     ref: null
   - name: DogPark
     git_url: https://github.com/NCATSTranslator/DogPark-Ranger.git
+    # Plugin-level deps (e.g. jsonlines) are declared in each manifest's "requires".

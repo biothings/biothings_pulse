@@ -89,7 +89,9 @@ def _purge_new_repo_modules(before: set, repo_path) -> None:
             pass
 
 
-def _import_release_func(plugin_dir: Path, mod_spec: str, repo_path=None) -> Callable:
+def _import_release_func(
+    plugin_dir: Path, mod_spec: str, repo_path=None, extra_paths=()
+) -> Callable:
     """Import ``module:func`` for a manifest release function.
 
     A local ``module.py`` in the plugin dir is loaded by file. Otherwise the spec
@@ -109,6 +111,10 @@ def _import_release_func(plugin_dir: Path, mod_spec: str, repo_path=None) -> Cal
     added_paths: List[str] = []
     before_modules = set(sys.modules)
     try:
+        for entry in extra_paths:  # repo-configured sys.path dirs
+            if str(entry) not in sys.path:
+                sys.path.insert(0, str(entry))
+                added_paths.append(str(entry))
         if module_file.exists():
             if str(plugin_dir) not in sys.path:
                 sys.path.insert(0, str(plugin_dir))
@@ -190,7 +196,9 @@ def build_manifest_dumper(ref: PluginRef, work_dir: Path):
     # Optional custom release function -> set_release method.
     release_spec = section.get("release")
     if release_spec:
-        release_func = _import_release_func(Path(ref.path), release_spec, ref.repo_path)
+        release_func = _import_release_func(
+            Path(ref.path), release_spec, ref.repo_path, ref.extra_sys_path
+        )
 
         def set_release(self, _func=release_func):
             self.release = _func(self)
@@ -339,6 +347,9 @@ def load_advanced_dumper(ref: PluginRef, work_dir: Path):
     hub_root = _hub_src_root(source_dir)
     if hub_root is not None and hub_root not in entries:
         entries.append(hub_root)
+    for extra in ref.extra_sys_path:  # repo-configured sys.path dirs
+        if extra not in entries:
+            entries.append(extra)
 
     added = []
     before_modules = set(sys.modules)
