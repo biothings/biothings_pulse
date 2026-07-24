@@ -40,9 +40,15 @@ def test_run_dumper_check_error():
     assert "network down" in result.error
 
 
-def test_run_dumper_check_empty_is_error():
+def test_run_dumper_check_empty_is_unsupported():
+    # No release and no URLs -> not a crash; a manual/derived source.
     result = run_dumper_check(FakeDumper(release=None, urls=[]))
-    assert result.status == "error"
+    assert result.status == "unsupported"
+
+
+def test_run_dumper_check_not_implemented_is_unsupported():
+    result = run_dumper_check(FakeDumper(raise_exc=NotImplementedError("Define in subclass")))
+    assert result.status == "unsupported"
 
 
 def test_check_plugin_unsupported(fixture_repo):

@@ -55,13 +55,21 @@ def run_dumper_check(dumper) -> CheckResult:
         latest = getattr(dumper, "release", None)
         urls = [d["remote"] for d in getattr(dumper, "to_dump", []) if "remote" in d]
         if latest is None and not urls:
+            # No remote version to detect — typically a manual/derived source.
             return CheckResult(
-                status="error", error="dumper produced no release and no URLs"
+                status="unsupported",
+                error="no remote version detected (manual/derived source?)",
             )
         return CheckResult(
             status="ok",
             latest_version=str(latest) if latest is not None else None,
             download_urls=urls,
+        )
+    except NotImplementedError:
+        # The dumper doesn't implement release detection (e.g. ManualDumper).
+        return CheckResult(
+            status="unsupported",
+            error="dumper does not implement release detection (manual/derived source)",
         )
     except Exception as exc:  # noqa: BLE001
         logger.warning("check failed for %s: %s", getattr(dumper, "src_name", "?"), exc)
