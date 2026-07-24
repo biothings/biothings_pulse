@@ -47,6 +47,7 @@ def test_health(client):
     body = client.get("/health").json()
     assert body["status"] == "ok"
     assert body["catalog_size"] == 1
+    assert body["admin_enabled"] is True  # fixture configures a token
 
 
 def test_catalog(client):
@@ -138,6 +139,7 @@ def test_admin_disabled_when_no_token(tmp_path, monkeypatch):
     c = _make_client(tmp_path, monkeypatch, admin_token=None)
     try:
         assert c.get("/health").status_code == 200  # reads still work
+        assert c.get("/health").json()["admin_enabled"] is False
         assert c.post("/admin/refresh").status_code == 403
         assert c.post("/admin/refresh", headers=ADMIN).status_code == 403  # still off
         assert c.post("/sources/myrepo/mysrc/check").status_code == 403

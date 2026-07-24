@@ -92,6 +92,9 @@ class HealthResponse(BaseModel):
     status: str = "ok"
     version: str
     catalog_size: int
+    admin_enabled: bool = Field(
+        False, description="Whether admin operations are enabled (a token is configured)."
+    )
 
 
 class MessageResponse(BaseModel):

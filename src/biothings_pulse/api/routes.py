@@ -83,7 +83,9 @@ def dashboard() -> FileResponse:
 @router.get("/health", response_model=HealthResponse, tags=["meta"])
 def health(svc: PulseService = Depends(get_service)) -> HealthResponse:
     return HealthResponse(
-        version=__version__, catalog_size=len(svc.list_catalog())
+        version=__version__,
+        catalog_size=len(svc.list_catalog()),
+        admin_enabled=bool(svc.settings.admin_token),
     )
 
 

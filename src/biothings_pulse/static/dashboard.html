@@ -87,6 +87,8 @@
   .repo-chip:hover { border-color: var(--faint); color: var(--ink); }
   .repo-chip.off { opacity: .45; text-decoration: line-through; }
   .repo-chip .cnt { color: var(--faint); margin-left: 5px; }
+  .repo-ctl { background: none; border: 0; padding: 5px 4px; font-size: 12px; color: var(--accent); cursor: pointer; }
+  .repo-ctl:hover { text-decoration: underline; }
   input[type=search] {
     flex: 1 1 260px; min-width: 200px; padding: 9px 12px; color: var(--ink);
     background: var(--surface); border: 1px solid var(--line-2); border-radius: 3px; font-size: 13.5px;
@@ -107,6 +109,7 @@
   body.admin .admin-only { display: inline-flex; }
   #btn-admin { display: inline-flex; align-items: center; }
   #btn-admin.active { color: var(--accent); border-color: rgba(77,208,177,.4); }
+  #btn-admin.disabled { opacity: .6; color: var(--faint); }
   #btn-admin .ic { width: 12px; height: 12px; vertical-align: -2px; margin-right: 5px; }
   button:disabled { opacity: .5; cursor: default; }
 
@@ -125,7 +128,10 @@
   td.src .repo { color: var(--faint); font-weight: 400; }
   .src-icons { display: inline-flex; align-items: center; gap: 9px; flex: none; color: var(--faint); }
   .src-icons a, .src-icons .type-ic { display: inline-flex; color: var(--faint); }
-  .src-icons button { display: inline-flex; align-items: center; padding: 0; border: 0; background: none; color: var(--faint); cursor: pointer; }
+  .src-icons button { align-items: center; padding: 0; border: 0; background: none; color: var(--faint); cursor: pointer; }
+  /* keep the admin-only visibility rule authoritative inside .src-icons */
+  .src-icons button.admin-only { display: none; }
+  body.admin .src-icons button.admin-only { display: inline-flex; }
   .src-icons a:hover, .src-icons button:hover { color: var(--accent); }
   .type-ic { cursor: help; }
   .src-icons svg { width: 13px; height: 13px; display: block; }
@@ -215,10 +221,15 @@ function renderRepos() {
   const counts = {};
   DATA.forEach(d => { counts[d.repo] = (counts[d.repo] || 0) + 1; });
   const repos = Object.keys(counts).sort();
-  $('#repos').innerHTML = repos.map(r =>
+  if (!repos.length) { $('#repos').innerHTML = ''; return; }
+  const controls =
+    '<button class="repo-ctl" data-repos-action="all">select all</button>'
+    + '<button class="repo-ctl" data-repos-action="none">deselect all</button>';
+  const chips = repos.map(r =>
     `<button class="repo-chip ${hiddenRepos.has(r) ? 'off' : ''}" data-repo="${esc(r)}"`
     + ` title="Toggle ${esc(r)} sources">${esc(r)}<span class="cnt">${counts[r]}</span></button>`
   ).join('');
+  $('#repos').innerHTML = controls + chips;
 }
 
 function timeAgo(iso) {
@@ -279,15 +290,22 @@ async function api(path, method='GET', admin=false) {
 const ADMIN_KEY = 'pulse-admin-token';
 const LOCK_SVG = '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="10" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>';
 const UNLOCK_SVG = '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="10" rx="2"/><path d="M7 11V7a5 5 0 0 1 9.6-2"/></svg>';
+let adminEnabled = false;  // whether the server has admin ops enabled (has a token)
 function adminToken() { try { return localStorage.getItem(ADMIN_KEY) || ''; } catch (_) { return ''; } }
 function setAdmin(t) { try { t ? localStorage.setItem(ADMIN_KEY, t) : localStorage.removeItem(ADMIN_KEY); } catch (_) {} renderAdmin(); }
 function renderAdmin() {
-  const on = !!adminToken();
+  const on = adminEnabled && !!adminToken();  // only "unlocked" if the server allows it
   document.body.classList.toggle('admin', on);
   const b = $('#btn-admin');
   b.classList.toggle('active', on);
-  b.innerHTML = (on ? UNLOCK_SVG : LOCK_SVG) + (on ? 'admin' : 'admin');
-  b.title = on ? 'Admin unlocked — click to lock' : 'Enter admin token to enable admin actions';
+  b.classList.toggle('disabled', !adminEnabled);
+  if (!adminEnabled) {
+    b.innerHTML = LOCK_SVG + 'admin off';
+    b.title = 'Admin disabled on the server (set PULSE_ADMIN_TOKEN to enable)';
+  } else {
+    b.innerHTML = (on ? UNLOCK_SVG : LOCK_SVG) + 'admin';
+    b.title = on ? 'Admin unlocked — click to lock' : 'Enter admin token to enable admin actions';
+  }
 }
 
 function renderStats() {
@@ -355,6 +373,9 @@ async function load() {
   try {
     const [sources, health] = await Promise.all([api('/sources'), api('/health').catch(()=>null)]);
     DATA = sources.sources || [];
+    adminEnabled = !!(health && health.admin_enabled);
+    if (!adminEnabled && adminToken()) setAdmin('');  // drop a token that can't work
+    else renderAdmin();
     render();
     const hv = health ? ` · v${health.version} · catalog ${health.catalog_size}` : '';
     $('#footer').innerHTML = `updated ${new Date().toLocaleTimeString()}${hv} · <a href="/docs">API documentation</a>`;
@@ -372,6 +393,16 @@ async function withBusy(btn, fn) {
 $('#filter').addEventListener('input', renderRows);
 $('#only-changed').addEventListener('change', renderRows);
 $('#repos').addEventListener('click', (e) => {
+  const ctl = e.target.closest('[data-repos-action]');
+  if (ctl) {
+    hiddenRepos.clear();
+    if (ctl.dataset.reposAction === 'none') {
+      [...new Set(DATA.map(d => d.repo))].forEach(r => hiddenRepos.add(r));
+    }
+    renderRepos();
+    renderRows();
+    return;
+  }
   const chip = e.target.closest('.repo-chip');
   if (!chip) return;
   const r = chip.dataset.repo;
@@ -394,6 +425,10 @@ $('#rows').addEventListener('click', (e) => {
 });
 
 $('#btn-admin').addEventListener('click', () => {
+  if (!adminEnabled) {
+    alert('Admin operations are disabled on the server.\nSet PULSE_ADMIN_TOKEN to enable them.');
+    return;
+  }
   if (adminToken()) { setAdmin(''); }
   else { const t = prompt('Admin token:'); if (t) setAdmin(t.trim()); }
 });
