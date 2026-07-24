@@ -70,15 +70,12 @@ def get_source(
     repo: str,
     plugin: str,
     refresh: bool = Query(
-        False, description="Force a fresh check instead of returning cached state."
+        False, description="Force a fresh live check instead of returning cached state."
     ),
     svc: PulseService = Depends(get_service),
 ) -> SourceStatus:
-    if refresh:
-        state = svc.check_source(repo, plugin)
-    else:
-        # Refresh transparently only when missing/stale.
-        state = svc.get_status(repo, plugin, allow_stale=False)
+    # Reads are cheap (cached); only ?refresh=true triggers a live check.
+    state = svc.check_source(repo, plugin) if refresh else svc.get_status(repo, plugin)
     if state is None:
         raise HTTPException(status_code=404, detail=f"Unknown source {repo}/{plugin}")
     return SourceStatus.from_state(state)
@@ -93,24 +90,6 @@ def check_source(
     state = svc.check_source(repo, plugin)
     if state is None:
         raise HTTPException(status_code=404, detail=f"Unknown source {repo}/{plugin}")
-    return SourceStatus.from_state(state)
-
-
-@router.post(
-    "/sources/{repo}/{plugin}/acknowledge",
-    response_model=SourceStatus,
-    tags=["sources"],
-)
-def acknowledge(
-    repo: str, plugin: str, svc: PulseService = Depends(get_service)
-) -> SourceStatus:
-    """Advance the tracked current_version to the latest detected version."""
-    state = svc.acknowledge(repo, plugin)
-    if state is None:
-        raise HTTPException(
-            status_code=404,
-            detail=f"No recorded state for {repo}/{plugin} (check it first)",
-        )
     return SourceStatus.from_state(state)
 
 

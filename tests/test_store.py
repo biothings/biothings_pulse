@@ -5,54 +5,55 @@ def make_store(tmp_path):
     return SQLiteStateStore(tmp_path / "state.db")
 
 
-def test_roundtrip_and_baseline(tmp_path):
+def test_first_sighting_sets_current(tmp_path):
     store = make_store(tmp_path)
-
-    # First check establishes a baseline -> not "has_update".
-    state = store.record_check(
-        "repoA", "src1", "manifest", latest_version="2024-01", download_urls=["u"]
+    st = store.record_check(
+        "r", "s", "manifest", detected_version="1", download_urls=["u"]
     )
-    assert state.current_version == "2024-01"
-    assert state.latest_version == "2024-01"
-    assert state.has_update is False
-    assert state.status == "ok"
+    assert st.current_version == "1"
+    assert st.current_version_at is not None
+    assert st.last_version is None
+    assert st.last_version_at is None
+    assert st.status == "ok"
+    assert st.checked_at is not None
 
-    # A newer remote version now reads as an available update.
-    state = store.record_check(
-        "repoA", "src1", "manifest", latest_version="2024-06", download_urls=["u"]
+
+def test_unchanged_preserves_first_seen(tmp_path):
+    store = make_store(tmp_path)
+    first = store.record_check("r", "s", "manifest", detected_version="1")
+    again = store.record_check("r", "s", "manifest", detected_version="1")
+    assert again.current_version == "1"
+    assert again.current_version_at == first.current_version_at  # first-seen kept
+    assert again.last_version is None
+
+
+def test_new_version_rotates_to_last(tmp_path):
+    store = make_store(tmp_path)
+    first = store.record_check("r", "s", "manifest", detected_version="1")
+    updated = store.record_check("r", "s", "manifest", detected_version="2")
+    assert updated.current_version == "2"
+    assert updated.last_version == "1"
+    assert updated.last_version_at == first.current_version_at
+    assert updated.current_version_at >= first.current_version_at
+
+
+def test_error_preserves_current_but_records_attempt(tmp_path):
+    store = make_store(tmp_path)
+    store.record_check("r", "s", "manifest", detected_version="1")
+    st = store.record_check(
+        "r", "s", "manifest", detected_version=None, status="error", error="boom"
     )
-    assert state.current_version == "2024-01"  # baseline unchanged
-    assert state.latest_version == "2024-06"
-    assert state.has_update is True
-
-    # Acknowledge advances the baseline.
-    state = store.acknowledge("repoA", "src1")
-    assert state.current_version == "2024-06"
-    assert state.has_update is False
+    assert st.status == "error"
+    assert st.error == "boom"
+    assert st.current_version == "1"  # not clobbered on error
+    assert st.checked_at is not None  # attempt time recorded even on failure
 
 
-def test_error_status_preserves_current(tmp_path):
+def test_list_all_and_persistence(tmp_path):
     store = make_store(tmp_path)
-    store.record_check("r", "s", "manifest", latest_version="1")
-    state = store.record_check(
-        "r", "s", "manifest", latest_version=None, status="error", error="boom"
-    )
-    assert state.status == "error"
-    assert state.error == "boom"
-    assert state.current_version == "1"  # not clobbered on error
-
-
-def test_list_all(tmp_path):
-    store = make_store(tmp_path)
-    store.record_check("r", "a", "manifest", latest_version="1")
-    store.record_check("r", "b", "advanced", latest_version="2")
-    keys = {s.key for s in store.list_all()}
-    assert keys == {"r/a", "r/b"}
-
-
-def test_persistence_across_instances(tmp_path):
-    store = make_store(tmp_path)
-    store.record_check("r", "a", "manifest", latest_version="1")
+    store.record_check("r", "a", "manifest", detected_version="1")
+    store.record_check("r", "b", "advanced", detected_version="2")
+    assert {s.key for s in store.list_all()} == {"r/a", "r/b"}
     store.close()
     reopened = make_store(tmp_path)
-    assert reopened.get("r", "a").latest_version == "1"
+    assert reopened.get("r", "a").current_version == "1"

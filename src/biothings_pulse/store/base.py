@@ -14,11 +14,16 @@ def _now() -> datetime:
 
 
 class SourceState(BaseModel):
-    """Everything BioThings Pulse knows about one data source.
+    """What BioThings Pulse has observed about one data source.
 
-    ``current_version`` is Pulse's own source of truth for "what is deployed /
-    acknowledged". ``latest_version`` is what the most recent check detected on
-    the remote. ``has_update`` compares the two.
+    Pulse only reports upstream facts; it does not track whether any particular
+    consumer has "updated". Downstream hubs/apps poll the API and maintain their
+    own update state by comparing ``current_version`` against what they deployed.
+
+    ``current_version`` is the most recently detected upstream version and
+    ``current_version_at`` is when it was *first* seen. When a check detects a
+    different version, the previous one is retained as ``last_version`` /
+    ``last_version_at``.
     """
 
     repo: str
@@ -26,7 +31,9 @@ class SourceState(BaseModel):
     plugin_type: str = "unknown"  # "manifest" | "advanced" | "unknown"
 
     current_version: Optional[str] = None
-    latest_version: Optional[str] = None
+    current_version_at: Optional[datetime] = None
+    last_version: Optional[str] = None
+    last_version_at: Optional[datetime] = None
     download_urls: List[str] = Field(default_factory=list)
 
     status: str = "pending"  # "pending" | "ok" | "error" | "unsupported"
@@ -38,20 +45,6 @@ class SourceState(BaseModel):
     @property
     def key(self) -> str:
         return f"{self.repo}/{self.plugin}"
-
-    @property
-    def has_update(self) -> bool:
-        """True when a latest version is known and differs from the baseline.
-
-        A source that has never been baselined (``current_version is None``)
-        reports ``False`` — the first successful check adopts the detected
-        version as the baseline (see :meth:`StateStore.record_check`).
-        """
-        return (
-            self.current_version is not None
-            and self.latest_version is not None
-            and self.latest_version != self.current_version
-        )
 
     def is_stale(self, ttl_seconds: float) -> bool:
         if self.checked_at is None:
@@ -83,42 +76,39 @@ class StateStore(abc.ABC):
         plugin: str,
         plugin_type: str,
         *,
-        latest_version: Optional[str],
+        detected_version: Optional[str],
         download_urls: Optional[List[str]] = None,
         status: str = "ok",
         error: Optional[str] = None,
     ) -> SourceState:
         """Persist the outcome of a check and return the updated state.
 
-        On the *first* successful check for a source, the detected version is
-        adopted as the baseline ``current_version`` so it does not immediately
-        read as "has update".
+        On a successful check, if the detected version differs from the stored
+        ``current_version`` (including the very first sighting), the current
+        version is rotated into ``last_version`` and the new one is recorded with
+        ``current_version_at = now``. An unchanged version leaves the timestamps
+        intact, so ``current_version_at`` always reflects when that version was
+        *first* seen.
         """
+        now = _now()
         state = self.get(repo, plugin) or SourceState(
             repo=repo, plugin=plugin, plugin_type=plugin_type
         )
         state.plugin_type = plugin_type or state.plugin_type
         state.status = status
         state.error = error
-        state.updated_at = _now()
+        state.updated_at = now
+        state.checked_at = now  # every attempt, success or failure
 
         if status == "ok":
-            state.latest_version = latest_version
             state.download_urls = download_urls or []
-            state.checked_at = _now()
-            if state.current_version is None and latest_version is not None:
-                # Establish baseline on first successful observation.
-                state.current_version = latest_version
+            if detected_version is not None and detected_version != state.current_version:
+                # New version (or first sighting): rotate current -> last.
+                if state.current_version is not None:
+                    state.last_version = state.current_version
+                    state.last_version_at = state.current_version_at
+                state.current_version = detected_version
+                state.current_version_at = now
 
-        self.put(state)
-        return state
-
-    def acknowledge(self, repo: str, plugin: str) -> Optional[SourceState]:
-        """Advance the baseline: set ``current_version = latest_version``."""
-        state = self.get(repo, plugin)
-        if state is None:
-            return None
-        state.current_version = state.latest_version
-        state.updated_at = _now()
         self.put(state)
         return state

@@ -11,26 +11,36 @@ from ..store.base import SourceState
 
 
 class SourceStatus(BaseModel):
-    """The core per-source status payload."""
+    """The core per-source status payload.
+
+    Pulse reports only what it observed upstream; consumers compare
+    ``current_version`` against their own deployed version to decide whether they
+    need to update.
+    """
 
     repo: str
     plugin: str
     plugin_type: str
-    has_update: bool = Field(
-        description="True if a newer version was detected than the tracked current one."
-    )
     current_version: Optional[str] = Field(
-        None, description="Version currently tracked/acknowledged by Pulse."
+        None, description="Most recently detected upstream version."
     )
-    latest_version: Optional[str] = Field(
-        None, description="Latest version detected on the remote source."
+    current_version_at: Optional[datetime] = Field(
+        None, description="When current_version was first detected."
+    )
+    last_version: Optional[str] = Field(
+        None, description="Previously detected version, before current_version."
+    )
+    last_version_at: Optional[datetime] = Field(
+        None, description="When last_version was first detected."
     )
     download_urls: List[str] = Field(
         default_factory=list, description="URLs the plugin would download."
     )
     status: str = Field(description="ok | error | unsupported | pending")
     error: Optional[str] = None
-    checked_at: Optional[datetime] = None
+    checked_at: Optional[datetime] = Field(
+        None, description="When this source was last checked."
+    )
     updated_at: Optional[datetime] = None
 
     @classmethod
@@ -39,9 +49,10 @@ class SourceStatus(BaseModel):
             repo=state.repo,
             plugin=state.plugin,
             plugin_type=state.plugin_type,
-            has_update=state.has_update,
             current_version=state.current_version,
-            latest_version=state.latest_version,
+            current_version_at=state.current_version_at,
+            last_version=state.last_version,
+            last_version_at=state.last_version_at,
             download_urls=state.download_urls,
             status=state.status,
             error=state.error,

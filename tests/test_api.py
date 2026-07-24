@@ -57,21 +57,30 @@ def test_dashboard_landing_page(client):
     assert 'href="/docs"' in body  # links to the API docs
 
 
-def test_check_then_status_and_acknowledge(client):
-    # Force a check -> baseline set, no update.
+def test_check_records_current_version(client):
     resp = client.post("/sources/myrepo/mysrc/check")
     assert resp.status_code == 200
     body = resp.json()
-    assert body["latest_version"] == "2024-10"
     assert body["current_version"] == "2024-10"
-    assert body["has_update"] is False
+    assert body["current_version_at"] is not None
+    assert body["last_version"] is None
     assert body["download_urls"] == ["http://example.com/f.tsv"]
+    assert "has_update" not in body  # Pulse no longer owns update state
 
-    # Cached read.
-    assert client.get("/sources/myrepo/mysrc").json()["latest_version"] == "2024-10"
+    # A cached read returns the same, without re-checking.
+    assert client.get("/sources/myrepo/mysrc").json()["current_version"] == "2024-10"
 
-    # Acknowledge is idempotent here (already baselined).
-    assert client.post("/sources/myrepo/mysrc/acknowledge").status_code == 200
+
+def test_get_returns_pending_without_checking(client):
+    # Never checked yet: GET must return a cheap 'pending' record, not run a
+    # (potentially slow) live check.
+    body = client.get("/sources/myrepo/mysrc").json()
+    assert body["status"] == "pending"
+    assert body["current_version"] is None
+
+
+def test_acknowledge_endpoint_removed(client):
+    assert client.post("/sources/myrepo/mysrc/acknowledge").status_code == 404
 
 
 def test_unknown_source_404(client):

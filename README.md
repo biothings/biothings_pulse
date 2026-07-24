@@ -4,10 +4,14 @@ A standalone, production-ready API server that runs **only the data-source-check
 step** of a [BioThings Hub](https://docs.biothings.io) data plugin — without
 standing up a full Hub — and reports, per source:
 
-1. **Is there a new data update?** (`has_update`)
-2. **What is the current version?** (as tracked by Pulse — `current_version`)
-3. **If updated, what is the latest version?** (`latest_version`)
-4. *(Optional)* the list of **download URLs** the plugin would fetch.
+1. **What is the current upstream version?** (`current_version`, and when it was
+   first detected — `current_version_at`)
+2. **What was the previous version?** (`last_version` / `last_version_at`)
+3. *(Optional)* the list of **download URLs** the plugin would fetch.
+
+Pulse only reports these observed facts. It does **not** decide whether *you*
+need to update — each downstream hub/app polls the API and compares
+`current_version` against its own deployed version to maintain its own state.
 
 It supports both **manifest-based** plugins (`plugins/*/manifest.json`) and
 **advanced** plugins (`.../hub/dataload/sources/<src>/`, and `plugins/<src>/`),
@@ -39,19 +43,20 @@ For a single source, one check does this:
    - **Custom `release` function** (manifest `"release": "module:func"`): that
      function is imported from the plugin and executed to produce the version.
    - **Advanced dumper**: whatever the plugin's own `set_release()` does.
-3. **Read the result.** `latest_version` = `dumper.release`; `download_urls` =
-   the remote URLs the dumper queued in `dumper.to_dump`.
+3. **Read the result.** the detected version = `dumper.release`; `download_urls`
+   = the remote URLs the dumper queued in `dumper.to_dump`.
 
-**Deciding `has_update`.** Pulse's own state store — **not** a live API or the
-Hub DB — is the source of truth for `current_version`:
+**Recording versions.** Pulse tracks only what it has observed upstream:
 
-- The **first** successful check adopts the detected version as the baseline
-  (`current_version = latest_version`, so `has_update` is `false`).
-- Afterwards, `has_update` is `true` whenever a check finds
-  `latest_version != current_version`.
-- `POST /sources/{repo}/{plugin}/acknowledge` advances the baseline to the
-  latest — e.g. after the source has actually been ingested downstream — so the
-  flag clears until the next new release.
+- On a successful check, the detected version becomes `current_version`, stamped
+  with `current_version_at` = **when it was first seen**.
+- When a later check detects a **different** version, the old one rotates into
+  `last_version` / `last_version_at` and the new one becomes `current_version`
+  (with a fresh `current_version_at`). An unchanged version leaves the timestamps
+  untouched.
+- There is **no Pulse-side "update" flag or acknowledge step** — consumers decide
+  what counts as an update for them by comparing `current_version` against their
+  own deployed version.
 
 Each check is isolated: a failing or uncheckable plugin is recorded with
 `status: error` / `unsupported` and never affects other sources. Results are
@@ -133,11 +138,14 @@ biothings-pulse serve --reload             # run the API server
 | `GET /health` | Liveness + catalog size |
 | `GET /catalog` | Discovered sources (no state) |
 | `GET /sources` | All sources with last-known status |
-| `GET /sources/{repo}/{plugin}` | Status; `?refresh=true` forces a check |
+| `GET /sources/{repo}/{plugin}` | Cached status (cheap); `?refresh=true` forces a live check |
 | `POST /sources/{repo}/{plugin}/check` | Force a fresh check |
-| `POST /sources/{repo}/{plugin}/acknowledge` | Advance the tracked `current_version` |
 | `POST /admin/sync` | Re-pull repos & rediscover |
 | `POST /admin/refresh` | Check every source now |
+
+Reads (`GET`) always return the last cached result so consumers can poll
+freely — live checks happen only on the scheduler, `POST …/check`, or
+`?refresh=true`.
 
 Example response:
 
@@ -146,9 +154,10 @@ Example response:
   "repo": "pending.api",
   "plugin": "chebi",
   "plugin_type": "manifest",
-  "has_update": true,
-  "current_version": "2024-01-01",
-  "latest_version": "2026-07-07",
+  "current_version": "2026-07-07",
+  "current_version_at": "2026-07-08T02:00:00Z",
+  "last_version": "2026-06-30",
+  "last_version_at": "2026-07-01T02:00:00Z",
   "download_urls": ["http://purl.obolibrary.org/obo/chebi.obo"],
   "status": "ok",
   "error": null,

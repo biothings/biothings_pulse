@@ -85,24 +85,25 @@ class PulseService:
             repo,
             plugin,
             ref.plugin_type,
-            latest_version=result.latest_version,
+            detected_version=result.latest_version,
             download_urls=result.download_urls,
             status=result.status,
             error=result.error,
         )
 
-    def get_status(
-        self, repo: str, plugin: str, allow_stale: bool = True
-    ) -> Optional[SourceState]:
-        """Return stored status, refreshing when missing or (optionally) stale."""
-        if self.get_ref(repo, plugin) is None:
+    def get_status(self, repo: str, plugin: str) -> Optional[SourceState]:
+        """Return the cached status (or a 'pending' placeholder) without checking.
+
+        Reads are cheap so downstream consumers can poll freely; live checks only
+        happen via the background scheduler or an explicit check (POST /check or
+        ``?refresh=true``). Returns None only when the source isn't in the catalog.
+        """
+        ref = self.get_ref(repo, plugin)
+        if ref is None:
             return None
-        state = self.store.get(repo, plugin)
-        if state is None or (
-            not allow_stale and state.is_stale(self.settings.check_ttl)
-        ):
-            return self.check_source(repo, plugin)
-        return state
+        return self.store.get(repo, plugin) or SourceState(
+            repo=repo, plugin=plugin, plugin_type=ref.plugin_type
+        )
 
     def refresh_all(self) -> int:
         """Check every catalogued source; persist results. Returns #checked."""
@@ -120,7 +121,7 @@ class PulseService:
                 ref.repo,
                 ref.name,
                 ref.plugin_type,
-                latest_version=result.latest_version,
+                detected_version=result.latest_version,
                 download_urls=result.download_urls,
                 status=result.status,
                 error=result.error,
@@ -128,9 +129,6 @@ class PulseService:
             checked += 1
         logger.info("Refreshed %d sources", checked)
         return checked
-
-    def acknowledge(self, repo: str, plugin: str) -> Optional[SourceState]:
-        return self.store.acknowledge(repo, plugin)
 
     def close(self) -> None:
         self._executor.shutdown(wait=False, cancel_futures=True)

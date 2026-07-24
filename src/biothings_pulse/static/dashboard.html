@@ -60,7 +60,7 @@
   .brand h1 b { color: var(--accent); font-weight: 600; }
   .brand .tag { font-family: var(--mono); font-size: 11px; letter-spacing: .3px; }
   .brand .tag .cmd { color: var(--dim); }
-  .brand .tag .cmt { color: var(--faint); }
+  .brand .tag .cmt { color: var(--faint); margin-left: 4ch; }  /* >=4 spaces before inline comment */
   .nav { display: flex; align-items: center; gap: 20px; font-size: 13px; }
   .nav a { color: var(--dim); }
   .nav a:hover { color: var(--ink); text-decoration: none; }
@@ -129,7 +129,8 @@
   .upd { font-family: var(--mono); font-size: 10.5px; font-weight: 600; letter-spacing: .6px;
     color: var(--update); border: 1px solid rgba(227,179,65,.35); background: rgba(227,179,65,.08);
     border-radius: 3px; padding: 1px 7px; }
-  tr.has-update td.src { box-shadow: inset 2px 0 0 var(--update); }
+  tr.changed td.src { box-shadow: inset 2px 0 0 var(--update); }
+  .sub { font-size: 10.5px; color: var(--faint); margin-top: 2px; }
   .err-msg { color: var(--err); font-size: 11px; max-width: 240px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .acts { display: flex; gap: 12px; align-items: center; }
   .lnk { color: var(--dim); font-size: 12px; cursor: pointer; background: none; border: none; padding: 0; }
@@ -149,7 +150,7 @@
       <span class="pulse-dot" title="live"></span>
       <div>
         <h1>biothings<b>·</b>pulse</h1>
-        <span class="tag"><span class="cmd">$ biothings-pulse --help</span> <span class="cmt"># know when biomedical data sources update</span></span>
+        <span class="tag"><span class="cmd">$ biothings-pulse --help</span><span class="cmt"># know when biomedical data sources update</span></span>
       </div>
     </div>
     <nav class="nav">
@@ -164,7 +165,7 @@
 
   <div class="toolbar">
     <input type="search" id="filter" placeholder="filter by repo or plugin…" autocomplete="off" spellcheck="false" />
-    <label class="chk"><input type="checkbox" id="only-updates" /> only updates</label>
+    <label class="chk"><input type="checkbox" id="only-changed" /> recently changed</label>
     <button id="btn-refresh" title="Reload cached statuses">Refresh</button>
     <button id="btn-recheck-all" class="primary" title="Force a fresh check of every source">Re-check all</button>
     <button id="btn-sync" title="Re-pull repos and rediscover plugins">Sync repos</button>
@@ -174,11 +175,11 @@
     <table>
       <thead>
         <tr>
-          <th>Source</th><th>Type</th><th>Status</th><th>Update</th>
-          <th>Current</th><th>Latest</th><th>URLs</th><th>Checked</th><th></th>
+          <th>Source</th><th>Type</th><th>Status</th>
+          <th>Current version</th><th>Previous</th><th>URLs</th><th>Checked</th>
         </tr>
       </thead>
-      <tbody id="rows"><tr><td colspan="9" class="empty">Loading…</td></tr></tbody>
+      <tbody id="rows"><tr><td colspan="7" class="empty">Loading…</td></tr></tbody>
     </table>
   </div>
 </main>
@@ -198,6 +199,21 @@ function timeAgo(iso) {
 }
 function esc(x) { return (x==null?'':String(x)).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
 function ver(v) { return v ? `<span class="mono vtrunc" title="${esc(v)}">${esc(v)}</span>` : '<span class="faint">—</span>'; }
+function agoText(iso) {
+  if (!iso) return '';
+  const s = (Date.now() - new Date(iso).getTime()) / 1000;
+  if (isNaN(s)) return '';
+  for (const [sec, l] of [[86400,'d'],[3600,'h'],[60,'m']]) if (s >= sec) return Math.floor(s/sec) + l + ' ago';
+  return Math.max(0, Math.floor(s)) + 's ago';
+}
+const RECENT_WINDOW_S = 7 * 86400;  // "recently changed" window
+function isRecent(iso) {
+  if (!iso) return false;
+  const s = (Date.now() - new Date(iso).getTime()) / 1000;
+  return !isNaN(s) && s < RECENT_WINDOW_S;
+}
+// A real version transition (has a previous version) observed within the window.
+function isChanged(d) { return !!d.last_version && isRecent(d.current_version_at); }
 
 async function api(path, method='GET') {
   const r = await fetch(path, { method });
@@ -209,7 +225,7 @@ function renderStats() {
   const c = (f) => DATA.filter(f).length;
   const stats = [
     ['',  DATA.length, 'sources'],
-    ['u', c(d => d.has_update), 'updates'],
+    ['u', c(isChanged), 'changed &lt;7d'],
     ['k', c(d => d.status === 'ok'), 'ok'],
     ['e', c(d => d.status === 'error'), 'errors'],
     ['',  c(d => d.status === 'unsupported'), 'unsupported'],
@@ -220,14 +236,14 @@ function renderStats() {
 
 function renderRows() {
   const q = $('#filter').value.trim().toLowerCase();
-  const onlyUp = $('#only-updates').checked;
+  const onlyChanged = $('#only-changed').checked;
   let rows = DATA.filter(d =>
-    (!onlyUp || d.has_update) && (!q || (d.repo+'/'+d.plugin).toLowerCase().includes(q)));
-  const rank = d => d.has_update ? 0 : d.status === 'error' ? 1 : d.status === 'unsupported' ? 3 : 2;
+    (!onlyChanged || isChanged(d)) && (!q || (d.repo+'/'+d.plugin).toLowerCase().includes(q)));
+  const rank = d => isChanged(d) ? 0 : d.status === 'error' ? 1 : d.status === 'unsupported' ? 3 : 2;
   rows.sort((a,b) => rank(a)-rank(b) || (a.repo+a.plugin).localeCompare(b.repo+b.plugin));
 
   if (!rows.length) {
-    $('#rows').innerHTML = `<tr><td colspan="9" class="empty">`
+    $('#rows').innerHTML = `<tr><td colspan="7" class="empty">`
       + (DATA.length ? 'No sources match the filter.' : 'No sources discovered yet — click <b>Sync repos</b>.')
       + `</td></tr>`;
     return;
@@ -239,18 +255,19 @@ function renderRows() {
       : '<span class="faint">0</span>';
     const errCell = d.error ? `<div class="err-msg" title="${esc(d.error)}">${esc(d.error)}</div>` : '';
     const jsonUrl = `/sources/${encodeURIComponent(d.repo)}/${encodeURIComponent(d.plugin)}`;
-    return `<tr class="${d.has_update?'has-update':''}">
+    const curSeen = d.current_version_at ? `<div class="sub">first seen ${agoText(d.current_version_at)}</div>` : '';
+    const changed = isChanged(d);
+    const prevCell = d.last_version
+      ? `${ver(d.last_version)}<div class="sub">${agoText(d.last_version_at)}</div>`
+      : '<span class="faint">—</span>';
+    return `<tr class="${changed ? 'changed' : ''}">
       <td class="src"><a class="src-link" href="${jsonUrl}" target="_blank" rel="noopener" title="View this source's JSON"><span class="repo">${esc(d.repo)}/</span>${esc(d.plugin)}</a></td>
       <td><span class="type">${esc(d.plugin_type)}</span></td>
       <td><span class="st"><span class="dot d-${esc(d.status)}"></span>${esc(d.status)}</span>${errCell}</td>
-      <td>${d.has_update ? '<span class="upd">UPDATE</span>' : '<span class="faint">—</span>'}</td>
-      <td>${ver(d.current_version)}</td>
-      <td>${ver(d.latest_version)}</td>
+      <td>${ver(d.current_version)} ${changed ? '<span class="upd">NEW</span>' : ''}${curSeen}</td>
+      <td>${prevCell}</td>
       <td>${urlCell}</td>
       <td class="faint mono">${timeAgo(d.checked_at)}</td>
-      <td><div class="acts">
-        ${d.has_update ? `<button class="lnk" data-act="ack" data-repo="${esc(d.repo)}" data-plugin="${esc(d.plugin)}">ack</button>` : ''}
-      </div></td>
     </tr>`;
   }).join('');
 }
@@ -265,7 +282,7 @@ async function load() {
     const hv = health ? ` · v${health.version} · catalog ${health.catalog_size}` : '';
     $('#footer').innerHTML = `updated ${new Date().toLocaleTimeString()}${hv} · <a href="/docs">API documentation</a>`;
   } catch (e) {
-    $('#rows').innerHTML = `<tr><td colspan="9" class="empty">Failed to load: ${esc(e.message)}</td></tr>`;
+    $('#rows').innerHTML = `<tr><td colspan="7" class="empty">Failed to load: ${esc(e.message)}</td></tr>`;
   }
 }
 
@@ -276,21 +293,10 @@ async function withBusy(btn, fn) {
 }
 
 $('#filter').addEventListener('input', renderRows);
-$('#only-updates').addEventListener('change', renderRows);
+$('#only-changed').addEventListener('change', renderRows);
 $('#btn-refresh').addEventListener('click', (e) => withBusy(e.currentTarget, load));
 $('#btn-recheck-all').addEventListener('click', (e) => withBusy(e.currentTarget, async () => { await api('/admin/refresh','POST'); await load(); }));
 $('#btn-sync').addEventListener('click', (e) => withBusy(e.currentTarget, async () => { await api('/admin/sync','POST'); await load(); }));
-
-$('#rows').addEventListener('click', (e) => {
-  const btn = e.target.closest('button[data-act]');
-  if (!btn) return;
-  const { act, repo, plugin } = btn.dataset;
-  withBusy(btn, async () => {
-    if (act === 'check') await api(`/sources/${encodeURIComponent(repo)}/${encodeURIComponent(plugin)}/check`, 'POST');
-    else if (act === 'ack') await api(`/sources/${encodeURIComponent(repo)}/${encodeURIComponent(plugin)}/acknowledge`, 'POST');
-    await load();
-  });
-});
 
 // --- Theme toggle: an icon button cycling auto (follow OS) -> light -> dark ---
 const THEME_KEY = 'pulse-theme';
