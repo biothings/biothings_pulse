@@ -242,6 +242,28 @@ def _find_dumper_class(module, dotted_prefix: str):
     return _best(classes)
 
 
+def _hub_src_root(source_dir: Path):
+    """For a ``.../hub/dataload/sources/<name>`` source, return the dir that
+    contains ``hub/`` (the '[src]' dir).
+
+    Advanced dumpers commonly use absolute imports like
+    ``from hub.dataload.sources.<other> import ...``. That only resolves if the
+    dir containing ``hub/`` is on ``sys.path`` — which isn't the case when an
+    intermediate dir (e.g. ``src/``) is itself a package (then the package root
+    walks up past it). Adding this dir makes ``import hub.*`` work.
+    """
+    p = source_dir.resolve()
+    parents = p.parents
+    if (
+        len(parents) >= 4
+        and p.parent.name == "sources"
+        and parents[1].name == "dataload"
+        and parents[2].name == "hub"
+    ):
+        return parents[3]
+    return None
+
+
 def load_advanced_dumper(ref: PluginRef, work_dir: Path):
     """Import an advanced plugin's dumper class and instantiate it."""
     ensure_biothings_ready()  # also injects the `config` shim for `import config`
@@ -253,11 +275,18 @@ def load_advanced_dumper(ref: PluginRef, work_dir: Path):
     source_dir = Path(ref.path)
     sys_path_entry, dotted = _package_root_and_module(source_dir)
 
-    added = False
+    # Path entries needed for the plugin's imports to resolve.
+    entries = [sys_path_entry]
+    hub_root = _hub_src_root(source_dir)
+    if hub_root is not None and hub_root not in entries:
+        entries.append(hub_root)
+
+    added = []
     try:
-        if str(sys_path_entry) not in sys.path:
-            sys.path.insert(0, str(sys_path_entry))
-            added = True
+        for entry in entries:
+            if str(entry) not in sys.path:
+                sys.path.insert(0, str(entry))
+                added.append(str(entry))
 
         # Preferred: load the dumper module directly, bypassing the package
         # __init__ (which may import uploader/parser code needing a full Hub).
@@ -277,9 +306,9 @@ def load_advanced_dumper(ref: PluginRef, work_dir: Path):
             raise UnsupportedPlugin("no BaseDumper subclass found in package")
         return _instantiate(klass)
     finally:
-        if added:
+        for entry in added:
             try:
-                sys.path.remove(str(sys_path_entry))
+                sys.path.remove(entry)
             except ValueError:
                 pass
 

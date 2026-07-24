@@ -34,17 +34,47 @@ def ensure_biothings_ready() -> None:
         # Keep the SDK quiet unless explicitly debugging.
         os.environ.setdefault("HUB_VERBOSE", "0")
 
-        # 2. Import our config module and expose it as top-level ``config`` so
-        #    advanced plugin code doing ``import config`` / ``from config import
-        #    DATA_ARCHIVE_ROOT`` resolves against our shim rather than failing.
-        from biothings_pulse import hub_config
-
-        sys.modules.setdefault("config", hub_config)
+        # 2. Expose a top-level ``config`` module for advanced plugins that do
+        #    ``import config`` / ``from config import <X>``. It proxies our shim
+        #    and, for any *unknown* repo-specific constant (e.g. MAX_REF_ALT_LEN,
+        #    only used by upload/parse code), returns None so the dumper still
+        #    loads. This is deliberately kept SEPARATE from the SDK's config
+        #    module (hub_config) so the SDK's default_config fallback — which
+        #    relies on AttributeError — is not disturbed.
+        if "config" not in sys.modules:
+            sys.modules["config"] = _make_plugin_config_module()
 
         # 3. Trigger SDK config initialisation (reads HUB_CONFIG).
         import biothings.hub  # noqa: F401  (side-effecting import)
 
         _ready = True
+
+
+def _make_plugin_config_module():
+    """Build the permissive top-level ``config`` module for plugin imports.
+
+    Plugins expect ``config`` to behave like their hub's config, so we delegate
+    to the SDK's initialised ``biothings.config`` (which carries default_config
+    values like ``logger`` plus our shim settings). Repo-specific constants that
+    aren't defined anywhere (e.g. ``TAXONOMY``, ``MAX_REF_ALT_LEN`` — used only
+    by upload/parse code) resolve to ``None`` so the dumper can still load.
+    """
+    import types
+
+    cfg = types.ModuleType("config")
+
+    def _cfg_getattr(name: str):
+        import biothings
+
+        try:
+            return getattr(biothings.config, name)
+        except Exception:  # noqa: BLE001  (AttributeError / ConfigurationError)
+            if name[:1].isupper():
+                return None
+            raise AttributeError(f"module 'config' has no attribute {name!r}") from None
+
+    cfg.__getattr__ = _cfg_getattr  # PEP 562 module-level __getattr__
+    return cfg
 
 
 def get_dumper_module():
