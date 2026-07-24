@@ -54,7 +54,7 @@ def run_dumper_check(dumper) -> CheckResult:
         _run_create_todump(dumper)
         _ensure_release(dumper)
         latest = getattr(dumper, "release", None)
-        urls = [d["remote"] for d in getattr(dumper, "to_dump", []) if "remote" in d]
+        urls = [str(d["remote"]) for d in getattr(dumper, "to_dump", []) if "remote" in d]
         if latest is None and not urls:
             # No remote version to detect — typically a manual/derived source.
             return CheckResult(

@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import abc
+import logging
 from datetime import datetime, timezone
 from typing import List, Optional
 
 from pydantic import BaseModel, Field
+
+logger = logging.getLogger(__name__)
 
 
 def _now() -> datetime:
@@ -48,6 +51,16 @@ class SourceState(BaseModel):
     @property
     def key(self) -> str:
         return f"{self.repo}/{self.plugin}"
+
+
+def deserialize_state(doc: str) -> Optional[SourceState]:
+    """Parse a stored record JSON, skipping (with a warning) any that no longer
+    validate — one legacy/corrupt row must not break the whole listing."""
+    try:
+        return SourceState.model_validate_json(doc)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Skipping unreadable state record: %s", exc)
+        return None
 
 
 class StateStore(abc.ABC):
@@ -104,7 +117,9 @@ class StateStore(abc.ABC):
             state.schedule = schedule
 
         if status == "ok":
-            state.download_urls = download_urls or []
+            # Coerce to str: some dumpers put non-string values in to_dump
+            # (e.g. civic uses int variant IDs), which must not break storage.
+            state.download_urls = [str(u) for u in (download_urls or [])]
             if detected_version is not None and detected_version != state.current_version:
                 # New version (or first sighting): rotate current -> last.
                 if state.current_version is not None:

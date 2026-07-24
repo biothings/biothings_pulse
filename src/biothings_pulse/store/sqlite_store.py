@@ -7,7 +7,7 @@ import threading
 from pathlib import Path
 from typing import List, Optional
 
-from .base import SourceState, StateStore
+from .base import SourceState, StateStore, deserialize_state
 
 
 class SQLiteStateStore(StateStore):
@@ -43,7 +43,7 @@ class SQLiteStateStore(StateStore):
             ).fetchone()
         if row is None:
             return None
-        return SourceState.model_validate_json(row["doc"])
+        return deserialize_state(row["doc"])
 
     def put(self, state: SourceState) -> None:
         doc = state.model_dump_json()
@@ -60,7 +60,8 @@ class SQLiteStateStore(StateStore):
     def list_all(self) -> List[SourceState]:
         with self._lock:
             rows = self._conn.execute("SELECT doc FROM source_state").fetchall()
-        return [SourceState.model_validate_json(r["doc"]) for r in rows]
+        states = [deserialize_state(r["doc"]) for r in rows]
+        return [s for s in states if s is not None]
 
     def close(self) -> None:
         with self._lock:

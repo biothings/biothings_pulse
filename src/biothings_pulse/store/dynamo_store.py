@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from typing import List, Optional
 
-from .base import SourceState, StateStore
+from .base import SourceState, StateStore, deserialize_state
 
 
 class DynamoDBStateStore(StateStore):
@@ -32,7 +32,7 @@ class DynamoDBStateStore(StateStore):
         item = resp.get("Item")
         if not item:
             return None
-        return SourceState.model_validate_json(item["doc"])
+        return deserialize_state(item["doc"])
 
     def put(self, state: SourceState) -> None:
         self._table.put_item(
@@ -49,7 +49,9 @@ class DynamoDBStateStore(StateStore):
         while True:
             resp = self._table.scan(**kwargs)
             for item in resp.get("Items", []):
-                states.append(SourceState.model_validate_json(item["doc"]))
+                state = deserialize_state(item["doc"])
+                if state is not None:
+                    states.append(state)
             last = resp.get("LastEvaluatedKey")
             if not last:
                 break

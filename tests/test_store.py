@@ -62,6 +62,32 @@ def test_schedule_recorded_and_kept_on_error(tmp_path):
     assert st2.schedule == "0 2 * * 0"
 
 
+def test_download_urls_coerced_to_str(tmp_path):
+    # Some dumpers (e.g. civic) put ints in to_dump; they must be stored as str
+    # so the record round-trips through the List[str] model.
+    store = make_store(tmp_path)
+    st = store.record_check(
+        "r", "s", "manifest", detected_version="1", download_urls=[1, 2, "u"]
+    )
+    assert st.download_urls == ["1", "2", "u"]
+    assert store.get("r", "s").download_urls == ["1", "2", "u"]  # round-trips
+
+
+def test_list_all_skips_corrupt_record(tmp_path):
+    import json
+
+    store = make_store(tmp_path)
+    store.record_check("r", "good", "manifest", detected_version="1")
+    # Inject a record that no longer validates (int download_urls).
+    store._conn.execute(
+        "INSERT INTO source_state (repo, plugin, doc) VALUES (?, ?, ?)",
+        ("r", "bad", json.dumps({"repo": "r", "plugin": "bad", "download_urls": [1, 2]})),
+    )
+    store._conn.commit()
+    keys = {s.key for s in store.list_all()}
+    assert "r/good" in keys and "r/bad" not in keys  # corrupt row skipped, not fatal
+
+
 def test_list_all_and_persistence(tmp_path):
     store = make_store(tmp_path)
     store.record_check("r", "a", "manifest", detected_version="1")
