@@ -1,5 +1,7 @@
+from pathlib import Path
+
 from biothings_pulse.config import RepoSpec
-from biothings_pulse.plugins.discovery import discover_plugins
+from biothings_pulse.plugins.discovery import _source_url, discover_plugins
 
 
 def _spec():
@@ -24,6 +26,22 @@ def test_discovers_both_plugin_types(fixture_repo):
 
     # Advanced plugin under hub/dataload/sources/.
     assert by_name["widget"].plugin_type == "advanced"
+
+
+def test_source_url_github_and_other_hosts():
+    gh = RepoSpec(name="r", git_url="https://github.com/biothings/pending.api.git")
+    assert (
+        _source_url(gh, Path("/r"), Path("/r/plugins/chebi"))
+        == "https://github.com/biothings/pending.api/tree/HEAD/plugins/chebi"
+    )
+    # explicit ref
+    ghr = RepoSpec(name="r", git_url="https://github.com/o/repo.git", ref="main")
+    assert _source_url(ghr, Path("/r"), Path("/r/plugins/x")).endswith(
+        "/tree/main/plugins/x"
+    )
+    # non-GitHub host -> link to the repo root (no /tree deep link)
+    gl = RepoSpec(name="r", git_url="https://gitlab.com/o/repo.git")
+    assert _source_url(gl, Path("/r"), Path("/r/plugins/x")) == "https://gitlab.com/o/repo"
 
 
 def test_manifest_wins_over_advanced_on_name_clash(fixture_repo):

@@ -30,12 +30,15 @@ def get_service(request: Request) -> PulseService:
 
 
 def _status(svc: PulseService, state: SourceState) -> SourceStatus:
-    """Build the response, filling next_check_at from the schedule."""
+    """Build the response, filling next_check_at and source_url."""
     st = SourceStatus.from_state(state)
     if state.checked_at is not None:
         st.next_check_at = next_check_at(
             state.schedule, state.checked_at, svc.settings.scheduler_interval
         )
+    ref = svc.get_ref(state.repo, state.plugin)
+    if ref is not None:
+        st.source_url = ref.source_url
     return st
 
 
@@ -68,7 +71,12 @@ def list_sources(svc: PulseService = Depends(get_service)) -> SourcesResponse:
 def catalog(svc: PulseService = Depends(get_service)) -> CatalogResponse:
     """List discovered sources without touching the state store."""
     items = [
-        CatalogItem(repo=r.repo, plugin=r.name, plugin_type=r.plugin_type)
+        CatalogItem(
+            repo=r.repo,
+            plugin=r.name,
+            plugin_type=r.plugin_type,
+            source_url=r.source_url,
+        )
         for r in svc.list_catalog()
     ]
     return CatalogResponse(count=len(items), sources=items)

@@ -26,6 +26,7 @@ class PluginRef(BaseModel):
     path: Path
     manifest_path: Optional[Path] = None
     repo_path: Optional[Path] = None
+    source_url: Optional[str] = None  # web link to the plugin's source code
 
     @property
     def key(self) -> str:

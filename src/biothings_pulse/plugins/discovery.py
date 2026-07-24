@@ -4,12 +4,41 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import List
+from typing import List, Optional
+from urllib.parse import urlsplit
 
 from ..config import RepoSpec
 from .models import PluginRef
 
 logger = logging.getLogger(__name__)
+
+
+def _git_web_url(git_url: str) -> Optional[str]:
+    """Normalise a git clone URL to a browsable web URL."""
+    u = (git_url or "").strip()
+    if u.startswith("git+"):
+        u = u[4:]
+    if u.startswith("git@") and ":" in u:  # git@host:owner/repo(.git)
+        host, path = u[4:].split(":", 1)
+        u = f"https://{host}/{path}"
+    if u.endswith(".git"):
+        u = u[:-4]
+    return u.rstrip("/") or None
+
+
+def _source_url(spec: RepoSpec, repo_path: Path, plugin_dir: Path) -> Optional[str]:
+    """Web link to a plugin's source directory within its repo."""
+    web = _git_web_url(spec.git_url)
+    if not web:
+        return None
+    try:
+        rel = Path(plugin_dir).resolve().relative_to(Path(repo_path).resolve()).as_posix()
+    except ValueError:
+        rel = ""
+    # GitHub uses /tree/<ref>/<path>; for other hosts just link to the repo root.
+    if urlsplit(web).netloc == "github.com" and rel:
+        return f"{web}/tree/{spec.ref or 'HEAD'}/{rel}"
+    return web
 
 
 def _looks_like_advanced_plugin(path: Path) -> bool:
@@ -63,6 +92,7 @@ def discover_plugins(
                     path=plugin_dir,
                     manifest_path=mpath,
                     repo_path=repo_path,
+                    source_url=_source_url(spec, repo_path, plugin_dir),
                 )
             )
 
@@ -84,6 +114,7 @@ def discover_plugins(
                     plugin_type="advanced",
                     path=spath,
                     repo_path=repo_path,
+                    source_url=_source_url(spec, repo_path, spath),
                 )
             )
 

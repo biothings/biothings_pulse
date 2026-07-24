@@ -21,6 +21,9 @@ class SourceStatus(BaseModel):
     repo: str
     plugin: str
     plugin_type: str
+    source_url: Optional[str] = Field(
+        None, description="Web link to the plugin's source code."
+    )
     current_version: Optional[str] = Field(
         None, description="Most recently detected upstream version."
     )
@@ -72,6 +75,7 @@ class CatalogItem(BaseModel):
     repo: str
     plugin: str
     plugin_type: str
+    source_url: Optional[str] = None
 
 
 class CatalogResponse(BaseModel):
