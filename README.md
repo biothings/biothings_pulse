@@ -91,9 +91,16 @@ uv pip install --python .venv/bin/python -e ".[dev]"
 source .venv/bin/activate
 
 # Run the API (syncs repos + discovers plugins in the background on startup)
-uvicorn biothings_pulse.main:app --reload --port 8080
+biothings-pulse serve --reload --port 8080
 # dashboard: http://localhost:8080/   ·   API docs: http://localhost:8080/docs
 ```
+
+> Prefer `biothings-pulse serve --reload` over a bare
+> `uvicorn … --reload`: at runtime the app git-clones plugin repos and writes a
+> SQLite DB into the cache dir, and uvicorn's default watcher would treat those
+> as source changes and reload endlessly. The CLI scopes the reload watcher to
+> the package source. If you must use uvicorn directly, do the same:
+> `uvicorn biothings_pulse.main:app --reload --reload-dir src`.
 
 > **BioThings SDK:** currently pinned to a specific commit of the
 > `feature/asyncio-modernization` branch (see `pyproject.toml`) for reproducible

@@ -14,11 +14,23 @@ def _cmd_serve(args: argparse.Namespace) -> int:
     import uvicorn
 
     settings = get_settings()
+    reload_kwargs = {}
+    if args.reload:
+        # Watch only the package source. At runtime the app git-clones plugin
+        # repos (full of .py files) and writes a SQLite DB into the cache dir;
+        # watching the whole cwd would see those and reload endlessly.
+        from pathlib import Path
+
+        reload_kwargs = {
+            "reload": True,
+            "reload_dirs": [str(Path(__file__).resolve().parent)],
+            "reload_excludes": ["*.db", "*.sqlite*"],
+        }
     uvicorn.run(
         "biothings_pulse.main:app",
         host=args.host or settings.host,
         port=args.port or settings.port,
-        reload=args.reload,
+        **reload_kwargs,
     )
     return 0
 
