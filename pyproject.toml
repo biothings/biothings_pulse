@@ -69,6 +69,8 @@ markers = [
 line-length = 100
 target-version = "py39"
 src = ["src", "tests"]
+# Test fixtures are synthetic plugin code that intentionally breaks conventions.
+extend-exclude = ["tests/fixtures"]
 
 [tool.ruff.lint]
 # UP (pyupgrade) is intentionally excluded: we target py39 and keep

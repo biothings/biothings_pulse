@@ -161,37 +161,85 @@ def _package_root_and_module(source_dir: Path) -> tuple[Path, str]:
     return sys_path_entry, dotted
 
 
-def _find_dumper_class(module, dotted_prefix: str):
-    """Locate a concrete BaseDumper subclass defined within the package."""
+def _dumper_classes_in(module, defined_in) -> list:
+    """Concrete BaseDumper subclasses *defined in* ``module`` (per ``defined_in``).
+
+    ``defined_in(cls.__module__) -> bool`` filters out imported base classes
+    (e.g. HTTPDumper) so we only pick up the plugin's own dumper.
+    """
     import inspect
 
-    dumper_mod = get_dumper_module()
-    base = dumper_mod.BaseDumper
+    base = get_dumper_module().BaseDumper
+    out = []
+    for _, obj in inspect.getmembers(module, inspect.isclass):
+        if (
+            issubclass(obj, base)
+            and obj is not base
+            and defined_in(getattr(obj, "__module__", ""))
+            and getattr(obj, "SRC_NAME", None)
+        ):
+            out.append(obj)
+    return out
 
-    candidates = []
-    modules_to_scan = [module]
-    # Also scan a `dumper` submodule if the package __init__ doesn't expose one.
+
+def _best(classes: list):
+    # Prefer the most-derived class (in case of a small hierarchy).
+    return sorted(classes, key=lambda c: len(c.__mro__))[-1] if classes else None
+
+
+def _instantiate(klass):
+    try:
+        return klass()
+    except Exception as exc:  # noqa: BLE001
+        raise LoaderError(f"instantiating {klass.__name__} failed: {exc}") from exc
+
+
+def _load_dumper_by_file(source_dir: Path):
+    """Load the dumper module by file path, bypassing the package ``__init__``.
+
+    Advanced plugins' ``__init__.py`` typically imports the uploader/parser too,
+    which pull in Hub-only or heavy dependencies that fail outside a running Hub
+    (e.g. mychem.info/chembl's key-lookup). The dumper module itself is usually
+    self-contained, so load it directly. Returns an instantiated dumper, or
+    ``None`` if no dumper file/class was found (caller then tries the package).
+    """
+    _, dotted = _package_root_and_module(source_dir)
+    prefix = "pulseadv_" + dotted.replace(".", "_")
+    # Prefer files that look like a dumper module (``dumper.py``/``*_dump.py``).
+    candidates = sorted(
+        (p for p in source_dir.glob("*.py") if "dump" in p.stem.lower()),
+        key=lambda p: (p.stem.lower() not in ("dumper", "dump"), p.name),
+    )
+    for pyfile in candidates:
+        unique = f"{prefix}_{pyfile.stem}"
+        spec = importlib.util.spec_from_file_location(unique, pyfile)
+        if spec is None or spec.loader is None:
+            continue
+        mod = importlib.util.module_from_spec(spec)
+        sys.modules[unique] = mod  # reuse the stable name on re-checks
+        try:
+            spec.loader.exec_module(mod)
+        except Exception:  # noqa: BLE001
+            # e.g. relative imports needing package context; fall back to package.
+            sys.modules.pop(unique, None)
+            continue
+        klass = _best(_dumper_classes_in(mod, lambda m, u=unique: m == u))
+        if klass is not None:
+            return _instantiate(klass)
+    return None
+
+
+def _find_dumper_class(module, dotted_prefix: str):
+    """Locate a concrete BaseDumper subclass defined within the package."""
+    classes = _dumper_classes_in(module, lambda m: m.startswith(dotted_prefix))
+    # Also scan a `dumper`/`dump` submodule if __init__ doesn't expose one.
     for subname in ("dumper", "dump"):
         try:
             sub = importlib.import_module(f"{dotted_prefix}.{subname}")
-            modules_to_scan.append(sub)
         except Exception:  # noqa: BLE001
-            pass
-
-    for mod in modules_to_scan:
-        for _, obj in inspect.getmembers(mod, inspect.isclass):
-            if (
-                issubclass(obj, base)
-                and obj is not base
-                and getattr(obj, "__module__", "").startswith(dotted_prefix)
-                and getattr(obj, "SRC_NAME", None)
-            ):
-                candidates.append(obj)
-
-    if not candidates:
-        return None
-    # Prefer the most-derived class (in case of a small hierarchy).
-    return sorted(candidates, key=lambda c: len(c.__mro__))[-1]
+            continue
+        classes += _dumper_classes_in(sub, lambda m: m.startswith(dotted_prefix))
+    return _best(classes)
 
 
 def load_advanced_dumper(ref: PluginRef, work_dir: Path):
@@ -210,6 +258,15 @@ def load_advanced_dumper(ref: PluginRef, work_dir: Path):
         if str(sys_path_entry) not in sys.path:
             sys.path.insert(0, str(sys_path_entry))
             added = True
+
+        # Preferred: load the dumper module directly, bypassing the package
+        # __init__ (which may import uploader/parser code needing a full Hub).
+        dumper = _load_dumper_by_file(source_dir)
+        if dumper is not None:
+            return dumper
+
+        # Fallback: import the whole package (handles dumpers that rely on
+        # relative imports or are only exposed via __init__).
         try:
             module = importlib.import_module(dotted)
         except Exception as exc:  # noqa: BLE001
@@ -218,10 +275,7 @@ def load_advanced_dumper(ref: PluginRef, work_dir: Path):
         klass = _find_dumper_class(module, dotted)
         if klass is None:
             raise UnsupportedPlugin("no BaseDumper subclass found in package")
-        try:
-            return klass()
-        except Exception as exc:  # noqa: BLE001
-            raise LoaderError(f"instantiating {klass.__name__} failed: {exc}") from exc
+        return _instantiate(klass)
     finally:
         if added:
             try:
