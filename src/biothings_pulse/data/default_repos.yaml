@@ -34,7 +34,7 @@ repos:
   - name: mygene.info
     git_url: https://github.com/biothings/mygene.info.git
     ref: null
-    requirements: [lxml, pandas]   # bs4 parsing (umls), sider/umls parsers
+    requirements: [lxml, pandas, biopython]   # bs4 parsing (umls); refseq imports Bio
   - name: myvariant.info
     git_url: https://github.com/biothings/myvariant.info.git
     ref: null
