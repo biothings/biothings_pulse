@@ -38,9 +38,16 @@ RUN uv pip install ".[aws]"
 
 COPY scripts ./scripts
 
-# Optionally pre-install every plugin's declared requirements at build time so
-# checks never install anything at runtime. Off by default (keeps the image
-# lean and the build offline-friendly). Enable with:
+# Always install the registry's inline repo requirements — the compiled/parser
+# libraries plugins import during a check (lxml for BeautifulSoup, pandas,
+# bitarray, ...). Without these, checks fail with e.g.
+#   "FeatureNotFound: Couldn't find a tree builder ... lxml".
+# This needs no git checkout, so it stays fast and offline-friendly.
+RUN python scripts/install_plugin_requires.py --config-only
+
+# Optionally also pre-install every plugin's own declared requirements (manifest
+# `requires` + requirements.txt), which requires cloning the repos at build time.
+# Off by default to keep the image lean. Enable with:
 #   docker build --build-arg PREINSTALL_PLUGIN_REQUIRES=true ...
 ARG PREINSTALL_PLUGIN_REQUIRES=false
 RUN if [ "$PREINSTALL_PLUGIN_REQUIRES" = "true" ]; then \
